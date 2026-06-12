@@ -1,22 +1,68 @@
 import SwiftUI
+import SwiftData
 
 struct RootTabView: View {
+    @Environment(AppEnvironment.self) private var env
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.modelContext) private var modelContext
+    @AppStorage("appearancePreference") private var appearance = "system"
+    @AppStorage("hasOnboarded") private var hasOnboarded = false
+
     var body: some View {
         TabView {
-            Text("Dashboard")
+            NavigationStack { DashboardView() }
                 .tabItem { Label("Dashboard", systemImage: "chart.pie.fill") }
-            Text("Transactions")
+            NavigationStack { TransactionListView() }
                 .tabItem { Label("Transactions", systemImage: "list.bullet.rectangle.fill") }
-            Text("Scan")
+            NavigationStack { ScanHubView() }
                 .tabItem { Label("Scan", systemImage: "doc.viewfinder.fill") }
-            Text("Products")
+            NavigationStack { ProductListView() }
                 .tabItem { Label("Products", systemImage: "basket.fill") }
-            Text("Settings")
+            NavigationStack { SettingsView() }
                 .tabItem { Label("Settings", systemImage: "gearshape.fill") }
         }
+        .preferredColorScheme(preferredScheme)
+        .overlay {
+            if env.appLock.isLocked {
+                AppLockGateView()
+            }
+        }
+        .fullScreenCover(isPresented: needsOnboarding) {
+            OnboardingView { hasOnboarded = true }
+        }
+        .task {
+            env.appLock.lockIfEnabled()
+            materializeRecurring()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            switch phase {
+            case .background:
+                env.appLock.lockIfEnabled()
+            case .active:
+                materializeRecurring()
+            default:
+                break
+            }
+        }
     }
-}
 
-#Preview {
-    RootTabView()
+    private var needsOnboarding: Binding<Bool> {
+        Binding(get: { !hasOnboarded }, set: { if !$0 { hasOnboarded = true } })
+    }
+
+    private var preferredScheme: ColorScheme? {
+        switch appearance {
+        case "light": .light
+        case "dark": .dark
+        default: nil
+        }
+    }
+
+    private func materializeRecurring() {
+        do {
+            try RecurringService.materializeDue(context: modelContext)
+        } catch {
+            Log.persistence.error("Recurring materialization failed: \(String(describing: error))")
+        }
+    }
 }

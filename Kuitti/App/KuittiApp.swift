@@ -4,6 +4,7 @@ import SwiftData
 @main
 struct KuittiApp: App {
     let container: ModelContainer
+    @State private var environment = AppEnvironment()
 
     init() {
         do {
@@ -25,6 +26,7 @@ struct KuittiApp: App {
     var body: some Scene {
         WindowGroup {
             RootTabView()
+                .environment(environment)
         }
         .modelContainer(container)
     }
