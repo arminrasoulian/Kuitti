@@ -19,7 +19,6 @@ struct OnboardingView: View {
 
     private var welcomePage: some View {
         VStack(spacing: 16) {
-            Spacer()
             Image(systemName: "doc.text.viewfinder")
                 .font(.system(size: 72, weight: .medium))
                 .foregroundStyle(Color.accentColor)
@@ -46,13 +45,13 @@ struct OnboardingView: View {
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
+            .padding(.bottom, 24)
         }
         .padding(32)
     }
 
     private var setupPage: some View {
         VStack(spacing: 16) {
-            Spacer()
             Image(systemName: "key.fill")
                 .font(.system(size: 56, weight: .medium))
                 .foregroundStyle(Color.accentColor)
@@ -84,7 +83,7 @@ struct OnboardingView: View {
             .controlSize(.large)
             .disabled(trimmedKey.isEmpty)
             Button("I'll do this later") { onDone() }
-                .padding(.bottom, 8)
+                .padding(.bottom, 24)
         }
         .padding(32)
     }
