@@ -36,7 +36,8 @@ struct BarcodeResultView: View {
         }
         .sheet(item: $proposal) { proposed in
             ProposalConfirmSheet(proposal: proposed) { name, brand in
-                createProduct(named: name, brand: brand)
+                createProduct(named: name, brand: brand,
+                              translatedName: proposed.translatedName, sourceLanguage: proposed.sourceLanguage)
                 proposal = nil
             }
         }
@@ -69,7 +70,7 @@ struct BarcodeResultView: View {
                             adopt(candidate, brand: primaryBrand(off.brands))
                         } label: {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(candidate.canonicalName)
+                                Text(candidate.nameDisplay.primary)
                                     .foregroundStyle(.primary)
                                 if candidate.purchaseCount > 0 {
                                     Text("\(candidate.purchaseCount)× purchased")
@@ -83,8 +84,9 @@ struct BarcodeResultView: View {
             }
             Section {
                 Button("Create New Product", systemImage: "plus") {
+                    // OFF names are already in the app language (we request that variant).
                     let product = ProductMatcher(context: context)
-                        .findOrCreateProduct(canonicalName: offName, defaultUnit: .piece)
+                        .findOrCreateProduct(canonicalName: offName, defaultUnit: .piece, sourceLanguage: AppLanguage.current)
                     adopt(product, brand: primaryBrand(off.brands))
                 }
             } footer: {
@@ -105,7 +107,7 @@ struct BarcodeResultView: View {
     private var notFoundForm: some View {
         Form {
             Section {
-                Text("Open Food Facts doesn't know this barcode (\(ean)). Its coverage of Finnish products — especially store brands like Pirkka or Rainbow — is patchy, so this happens a lot.")
+                Text("Open Food Facts doesn't know this barcode (\(ean)). Its coverage of some products — especially store brands — is limited, so this happens sometimes.")
                     .font(.callout)
                 if let lookupNote {
                     Text(lookupNote)
@@ -169,6 +171,8 @@ struct BarcodeResultView: View {
                 proposal = ProductProposal(
                     name: result.productName,
                     brand: result.brand ?? "",
+                    translatedName: result.translatedName ?? "",
+                    sourceLanguage: result.sourceLanguage ?? "",
                     uncertain: result.confidence == "low"
                 )
             } catch is CancellationError {
@@ -203,11 +207,12 @@ struct BarcodeResultView: View {
         }
     }
 
-    private func createProduct(named name: String, brand: String?) {
+    private func createProduct(named name: String, brand: String?, translatedName: String = "", sourceLanguage: String = "") {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         let product = ProductMatcher(context: context)
-            .findOrCreateProduct(canonicalName: trimmed, defaultUnit: .piece)
+            .findOrCreateProduct(canonicalName: trimmed, defaultUnit: .piece,
+                                 translatedName: translatedName, sourceLanguage: sourceLanguage)
         adopt(product, brand: brand)
     }
 
@@ -225,6 +230,8 @@ private struct ProductProposal: Identifiable {
     let id = UUID()
     var name: String
     var brand: String
+    var translatedName: String
+    var sourceLanguage: String
     var uncertain: Bool
 }
 

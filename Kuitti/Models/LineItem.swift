@@ -6,8 +6,12 @@ final class LineItem {
     var uuid: UUID = UUID()
     // Exactly as printed on the receipt: "BANAANI LUOMU".
     var rawName: String = ""
-    // Resolved canonical name or user edit — what the UI shows.
+    // Resolved canonical name or user edit, in the receipt's ORIGINAL language.
     var displayName: String = ""
+    // App-language (English) translation of displayName. Empty when already in the app
+    // language or untranslated (manual entries, discounts without a translation). Lets
+    // Transaction Detail / Review dual-display even for product-less lines.
+    var translatedName: String = ""
     // A measurement (0.612 kg / 2 pcs), not money — Double is fine.
     var quantity: Double = 1
     var unitRaw: String = UnitKind.piece.rawValue

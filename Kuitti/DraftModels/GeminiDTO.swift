@@ -13,6 +13,8 @@ nonisolated struct GeminiReceiptDTO: Codable, Sendable {
     struct LineDTO: Codable, Sendable {
         var rawName: String
         var canonicalName: String
+        var sourceLanguage: String?
+        var translatedName: String?
         var quantity: Double
         var unit: String
         var unitPrice: String?

@@ -3,13 +3,14 @@ import Foundation
 nonisolated struct OFFProduct: Sendable {
     var ean: String
     var productName: String?
-    var productNameFI: String?
+    /// Open Food Facts name in the app's display language (e.g. product_name_en), when present.
+    var productNameLocalized: String?
     var brands: String?
     var quantity: String?
     var categoriesTags: [String]
 
     var bestName: String? {
-        let name = productNameFI?.isEmpty == false ? productNameFI : productName
+        let name = productNameLocalized?.isEmpty == false ? productNameLocalized : productName
         return name?.isEmpty == false ? name : nil
     }
 }
@@ -41,7 +42,7 @@ actor OpenFoodFactsClient {
 
         var components = URLComponents(string: "https://world.openfoodfacts.org/api/v2/product/\(ean)")!
         components.queryItems = [
-            .init(name: "fields", value: "product_name,product_name_fi,brands,quantity,categories_tags")
+            .init(name: "fields", value: "product_name,product_name_\(AppLanguage.current),brands,quantity,categories_tags")
         ]
 
         let data: Data
@@ -74,7 +75,7 @@ actor OpenFoodFactsClient {
         return OFFProduct(
             ean: ean,
             productName: product.productName,
-            productNameFI: product.productNameFI,
+            productNameLocalized: product.productNameLocalized,
             brands: product.brands,
             quantity: product.quantity,
             categoriesTags: product.categoriesTags ?? []
@@ -84,16 +85,27 @@ actor OpenFoodFactsClient {
     private nonisolated struct ResponseDTO: Decodable {
         struct ProductDTO: Decodable {
             var productName: String?
-            var productNameFI: String?
+            var productNameLocalized: String?
             var brands: String?
             var quantity: String?
             var categoriesTags: [String]?
 
-            enum CodingKeys: String, CodingKey {
-                case productName = "product_name"
-                case productNameFI = "product_name_fi"
-                case brands, quantity
-                case categoriesTags = "categories_tags"
+            // The app-language field name is dynamic ("product_name_en"), so it can't be a
+            // static CodingKey — decode it through a string-keyed container.
+            private struct DynamicKey: CodingKey {
+                var stringValue: String
+                init(stringValue: String) { self.stringValue = stringValue }
+                var intValue: Int? { nil }
+                init?(intValue: Int) { nil }
+            }
+
+            init(from decoder: Decoder) throws {
+                let container = try decoder.container(keyedBy: DynamicKey.self)
+                productName = try container.decodeIfPresent(String.self, forKey: DynamicKey(stringValue: "product_name"))
+                productNameLocalized = try container.decodeIfPresent(String.self, forKey: DynamicKey(stringValue: "product_name_\(AppLanguage.current)"))
+                brands = try container.decodeIfPresent(String.self, forKey: DynamicKey(stringValue: "brands"))
+                quantity = try container.decodeIfPresent(String.self, forKey: DynamicKey(stringValue: "quantity"))
+                categoriesTags = try container.decodeIfPresent([String].self, forKey: DynamicKey(stringValue: "categories_tags"))
             }
         }
         var status: Int?

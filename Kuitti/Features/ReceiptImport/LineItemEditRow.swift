@@ -19,12 +19,18 @@ struct LineItemEditRow: View {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 resolutionChip
                 VStack(alignment: .leading, spacing: 2) {
+                    // Edits the original-language canonical name; the translation is shown below.
                     TextField("Item name", text: $line.canonicalName)
                         .font(.body.weight(.semibold))
+                    if let translated = line.translatedName, !translated.isEmpty, translated != line.canonicalName {
+                        Text(translated)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
                     if !line.rawName.isEmpty && line.rawName != line.canonicalName {
                         Text(line.rawName)
                             .font(.caption2)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.tertiary)
                     }
                 }
                 if line.uncertain {
@@ -85,7 +91,7 @@ struct LineItemEditRow: View {
     @ViewBuilder
     private var resolutionChip: some View {
         if line.isDiscountOrDeposit {
-            chipLabel("alennus/pantti", color: .gray)
+            chipLabel("discount/deposit", color: .gray)
         } else {
             switch line.resolution {
             case .confirmedAlias:

@@ -26,7 +26,7 @@ struct OnboardingView: View {
                 .font(.largeTitle.bold())
             VStack(alignment: .leading, spacing: 20) {
                 FeatureBullet(icon: "doc.viewfinder",
-                              title: "Scan Finnish receipts",
+                              title: "Scan receipts in any language",
                               detail: "A photo becomes a categorized transaction automatically.")
                 FeatureBullet(icon: "chart.line.uptrend.xyaxis",
                               title: "Price history across stores",

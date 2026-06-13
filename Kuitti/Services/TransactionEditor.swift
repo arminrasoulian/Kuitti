@@ -49,6 +49,7 @@ struct TransactionEditor {
                 sortOrder: draftLine.sortOrder
             )
             item.purchaseDate = draft.date
+            item.translatedName = draftLine.translatedName ?? ""
             item.isDiscountOrDeposit = draftLine.isDiscountOrDeposit
             item.quantityIsUncertain = draftLine.uncertain
             if let reason = draftLine.uncertaintyReason, !reason.isEmpty {
@@ -71,9 +72,16 @@ struct TransactionEditor {
                         return .fuzzyAuto
                     }()
                     matcher.upsertAlias(rawName: draftLine.rawName, store: store, product: product, source: source)
+                    // A cross-language match may be the first time this product gets a translation.
+                    matcher.enrichTranslation(product, translatedName: draftLine.translatedName ?? "", sourceLanguage: draftLine.sourceLanguage ?? "")
                 }
             case .newProduct:
-                let product = matcher.findOrCreateProduct(canonicalName: draftLine.canonicalName, defaultUnit: draftLine.unit)
+                let product = matcher.findOrCreateProduct(
+                    canonicalName: draftLine.canonicalName,
+                    defaultUnit: draftLine.unit,
+                    translatedName: draftLine.translatedName ?? "",
+                    sourceLanguage: draftLine.sourceLanguage ?? ""
+                )
                 item.product = product
                 matcher.upsertAlias(rawName: draftLine.rawName, store: store, product: product, source: .gemini)
             }

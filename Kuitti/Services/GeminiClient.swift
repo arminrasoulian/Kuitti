@@ -32,10 +32,12 @@ actor GeminiClient {
             knownAliases: context.knownAliases,
             categories: context.categories,
             fallbackCategory: context.fallbackCategory,
-            todayISO: today
+            todayISO: today,
+            appLanguage: AppLanguage.current
         )
         let schema = GeminiSchemas.receiptResponseSchema(
-            categoryNames: context.categories.map(\.name)
+            categoryNames: context.categories.map(\.name),
+            appLanguage: AppLanguage.current
         )
         return try await generate(images: pages, prompt: prompt, schema: schema, as: GeminiReceiptDTO.self)
     }
@@ -43,8 +45,8 @@ actor GeminiClient {
     func identifyProduct(imageData: Data, knownProducts: [String]) async throws -> ProductIdentification {
         try await generate(
             images: [imageData],
-            prompt: GeminiSchemas.productIDPrompt(knownProducts: knownProducts),
-            schema: GeminiSchemas.productIDResponseSchema(),
+            prompt: GeminiSchemas.productIDPrompt(knownProducts: knownProducts, appLanguage: AppLanguage.current),
+            schema: GeminiSchemas.productIDResponseSchema(appLanguage: AppLanguage.current),
             as: ProductIdentification.self
         )
     }

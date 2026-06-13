@@ -55,18 +55,31 @@ struct ProductListView: View {
         }
         let key = TextNormalizer.key(searchText)
         guard !key.isEmpty else { return sorted }
-        return sorted.filter { TextNormalizer.key($0.canonicalName).contains(key) }
+        // Match either the original name or its app-language translation, so an English
+        // search finds a Finnish-named product and vice versa.
+        return sorted.filter {
+            TextNormalizer.key($0.canonicalName).contains(key)
+                || TextNormalizer.key($0.translatedName).contains(key)
+        }
     }
 }
 
 private struct ProductRow: View {
     let product: Product
 
+    private var name: NameDisplay { product.nameDisplay }
+
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
-                Text(product.canonicalName)
+                Text(name.primary)
                     .lineLimit(1)
+                if let original = name.secondary {
+                    Text(original)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
                 Text(subtitle)
                     .font(.caption)
                     .foregroundStyle(.secondary)

@@ -32,8 +32,23 @@ struct ReceiptImportService {
                 return KnownAlias(raw: alias.rawName, canonical: canonical)
             },
             categories: categoryOptions(modelContext: modelContext),
-            fallbackCategory: SeedCatalog.fallbackCategoryName
+            // The actual fallback category name on THIS install (Finnish for existing users,
+            // English for new ones) so Gemini's enum value matches a real category.
+            fallbackCategory: fallbackCategory(modelContext: modelContext)?.name ?? SeedCatalog.fallbackCategoryName
         )
+    }
+
+    /// The undeletable "Other expenses" category, resolved by its stable seed identifier so it
+    /// works regardless of the row's display-language name (existing installs may be Finnish,
+    /// new installs are English).
+    static func fallbackCategory(modelContext: ModelContext) -> Category? {
+        let seedID: String? = SeedCatalog.fallbackCategorySeedID
+        let fetch = FetchDescriptor<Category>(predicate: #Predicate { $0.seedIdentifier == seedID })
+        return (try? modelContext.fetch(fetch))?.first
+    }
+
+    static func fallbackCategoryUUID(modelContext: ModelContext) -> UUID? {
+        fallbackCategory(modelContext: modelContext)?.uuid
     }
 
     /// Deduplicated, expense-kind only (income categories must not be suggestable for
@@ -90,6 +105,10 @@ struct ReceiptImportService {
             return (try? modelContext.fetch(fetch))?.first
         }()
 
+        // Resolved by seed ID, so it works even when the fallback category's name is in the
+        // user's original language (the constant string would miss it).
+        let fallbackCategoryUUID = fallbackCategoryUUID(modelContext: modelContext)
+
         var lines: [LineDraft] = []
         for (index, lineDTO) in dto.lineItems.enumerated() {
             guard let totalMinor = Money.minorUnits(fromDecimalString: lineDTO.lineTotal) else {
@@ -113,18 +132,26 @@ struct ReceiptImportService {
 
             let resolution: ProductResolution = lineDTO.isDiscountOrDeposit
                 ? .notAProduct
-                : matcher.resolve(rawName: lineDTO.rawName, proposedCanonical: lineDTO.canonicalName, unit: unit, store: existingStore)
+                : matcher.resolve(
+                    rawName: lineDTO.rawName,
+                    proposedCanonical: lineDTO.canonicalName,
+                    proposedTranslation: lineDTO.translatedName ?? "",
+                    unit: unit,
+                    store: existingStore
+                )
 
             lines.append(LineDraft(
                 rawName: lineDTO.rawName,
                 canonicalName: lineDTO.canonicalName,
+                translatedName: lineDTO.translatedName,
+                sourceLanguage: lineDTO.sourceLanguage,
                 quantity: quantity,
                 unit: unit,
                 lineTotalMinor: totalMinor,
                 isDiscountOrDeposit: lineDTO.isDiscountOrDeposit,
                 uncertain: uncertain,
                 uncertaintyReason: reason,
-                suggestedCategoryUUID: categoryMap[lineDTO.suggestedCategory] ?? categoryMap[SeedCatalog.fallbackCategoryName],
+                suggestedCategoryUUID: categoryMap[lineDTO.suggestedCategory] ?? fallbackCategoryUUID,
                 chosenCategoryUUID: nil,
                 resolution: resolution,
                 sortOrder: index

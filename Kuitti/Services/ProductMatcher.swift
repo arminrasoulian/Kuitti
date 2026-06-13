@@ -54,7 +54,7 @@ struct ProductMatcher {
 
     static let fuzzyThreshold = 0.90
 
-    func resolve(rawName: String, proposedCanonical: String, unit: UnitKind, store: Store?) -> ProductResolution {
+    func resolve(rawName: String, proposedCanonical: String, proposedTranslation: String = "", unit: UnitKind, store: Store?) -> ProductResolution {
         let key = TextNormalizer.key(rawName)
         guard !key.isEmpty else { return .newProduct }
 
@@ -73,14 +73,26 @@ struct ProductMatcher {
         }
 
         // STEP 2 — local fuzzy match against all canonical products (a few hundred rows).
+        // The app-language translation is a SECOND scoring input (the hybrid bridge): the
+        // same product scanned later in another language — German "Banane" translated to
+        // "Banana" — still suggests the existing Finnish "Banaani" product, whose
+        // translatedNormalizedKey is also "banana". Nothing auto-merges; the user confirms.
         let products = (try? context.fetch(FetchDescriptor<Product>())) ?? []
         let proposedKey = TextNormalizer.key(proposedCanonical)
+        let translatedKey = TextNormalizer.key(proposedTranslation)
         var best: (product: Product, score: Double)?
         for product in products {
-            let score = max(
+            var score = max(
                 FuzzyMatch.score(key, product.normalizedKey),
                 FuzzyMatch.score(proposedKey, product.normalizedKey)
             )
+            if !translatedKey.isEmpty {
+                score = max(
+                    score,
+                    FuzzyMatch.score(translatedKey, product.translatedNormalizedKey),
+                    FuzzyMatch.score(translatedKey, product.normalizedKey)
+                )
+            }
             if score > (best?.score ?? 0) { best = (product, score) }
         }
         if let best, best.score >= Self.fuzzyThreshold, unitsCompatible(unit, best.product.defaultUnit) {
@@ -100,14 +112,34 @@ struct ProductMatcher {
 
     // MARK: - Upserts (logical uniqueness lives here — CloudKit forbids constraints)
 
-    func findOrCreateProduct(canonicalName: String, defaultUnit: UnitKind) -> Product {
+    func findOrCreateProduct(canonicalName: String, defaultUnit: UnitKind,
+                             translatedName: String = "", sourceLanguage: String = "") -> Product {
         let key = TextNormalizer.key(canonicalName)
+        let trimmedTranslation = translatedName.trimmingCharacters(in: .whitespacesAndNewlines)
         let fetch = FetchDescriptor<Product>(predicate: #Predicate { $0.normalizedKey == key })
-        if let existing = (try? context.fetch(fetch))?.first { return existing }
+        if let existing = (try? context.fetch(fetch))?.first {
+            // Forward-only enrichment: fill a missing translation when a fresh scan supplies
+            // one (not a migration — existing untouched products simply stay untranslated).
+            enrichTranslation(existing, translatedName: trimmedTranslation, sourceLanguage: sourceLanguage)
+            return existing
+        }
         let product = Product(canonicalName: canonicalName.trimmingCharacters(in: .whitespacesAndNewlines),
                               normalizedKey: key, defaultUnit: defaultUnit)
+        product.translatedName = trimmedTranslation
+        product.translatedNormalizedKey = TextNormalizer.key(trimmedTranslation)
+        product.sourceLanguage = sourceLanguage
         context.insert(product)
         return product
+    }
+
+    /// Forward-only: fill a product's missing app-language translation from a fresh scan.
+    /// No-op when the product already has a translation or the incoming one is empty.
+    func enrichTranslation(_ product: Product, translatedName: String, sourceLanguage: String) {
+        let trimmed = translatedName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard product.translatedName.isEmpty, !trimmed.isEmpty else { return }
+        product.translatedName = trimmed
+        product.translatedNormalizedKey = TextNormalizer.key(trimmed)
+        if product.sourceLanguage.isEmpty { product.sourceLanguage = sourceLanguage }
     }
 
     func product(withUUID uuid: UUID) -> Product? {

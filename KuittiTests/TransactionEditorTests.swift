@@ -94,6 +94,34 @@ struct TransactionEditorTests {
         #expect(resolution == .confirmedAlias(productUUID: right.uuid))
     }
 
+    /// A scanned non-English line carries its translation onto both the line item and the
+    /// newly created product (with a normalized translation key for cross-language matching).
+    @Test func saveReceiptStoresProductAndLineTranslations() throws {
+        let context = try makeContext()
+        let draft = ReceiptDraft(
+            storeRawName: "REWE", storeNormalizedName: "REWE", date: Date(),
+            paymentMethod: .card,
+            lines: [LineDraft(rawName: "VOLLMILCH 1L", canonicalName: "Vollmilch 1L",
+                              translatedName: "Whole milk 1L", sourceLanguage: "de",
+                              quantity: 1, unit: .piece, lineTotalMinor: 109,
+                              isDiscountOrDeposit: false, uncertain: false, uncertaintyReason: nil,
+                              suggestedCategoryUUID: nil, chosenCategoryUUID: nil,
+                              resolution: .newProduct, sortOrder: 0)],
+            subtotalMinor: nil, vatLines: [], totalMinor: 109,
+            confidence: .high, warnings: [], pages: []
+        )
+        let editor = TransactionEditor(context: context)
+        let transaction = try editor.saveReceipt(draft: draft, account: nil)
+
+        let item = transaction.lineItems?.first
+        #expect(item?.translatedName == "Whole milk 1L")
+        let product = item?.product
+        #expect(product?.canonicalName == "Vollmilch 1L")        // identity stays original-language
+        #expect(product?.translatedName == "Whole milk 1L")
+        #expect(product?.translatedNormalizedKey == "whole milk 1l")
+        #expect(product?.sourceLanguage == "de")
+    }
+
     @Test func deleteRecomputesProductStats() throws {
         let context = try makeContext()
         let editor = TransactionEditor(context: context)

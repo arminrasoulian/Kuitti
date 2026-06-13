@@ -35,6 +35,33 @@ struct ProductMatcherTests {
         #expect(aliases.first?.product?.uuid == right.uuid)
     }
 
+    @Test func translationBridgesCrossLanguageMatches() throws {
+        let context = try makeContext()
+        let matcher = ProductMatcher(context: context)
+        // A Finnish product that already carries an English (app-language) translation.
+        _ = matcher.findOrCreateProduct(canonicalName: "Banaani", defaultUnit: .kilogram,
+                                        translatedName: "Banana", sourceLanguage: "fi")
+        try context.save()
+
+        // A later German line: neither the raw text "BANANE" nor the canonical "Banane"
+        // is close enough to "banaani", but the shared English translation bridges them.
+        let bridged = matcher.resolve(rawName: "BANANE", proposedCanonical: "Banane",
+                                      proposedTranslation: "Banana", unit: .kilogram, store: nil)
+        guard case .fuzzySuggested(let uuid, let score) = bridged else {
+            Issue.record("expected a fuzzy suggestion via the translation bridge, got \(bridged)")
+            return
+        }
+        let banaani = try context.fetch(FetchDescriptor<Product>()).first { $0.canonicalName == "Banaani" }
+        #expect(uuid == banaani?.uuid)
+        #expect(score >= ProductMatcher.fuzzyThreshold)
+
+        // Negative control: without the translation, the German name alone must NOT match —
+        // the bridge is precisely what makes the cross-language suggestion possible.
+        let unbridged = matcher.resolve(rawName: "BANANE", proposedCanonical: "Banane",
+                                        proposedTranslation: "", unit: .kilogram, store: nil)
+        #expect(unbridged == .newProduct)
+    }
+
     @Test func fuzzySuggestsCloseNames() throws {
         let context = try makeContext()
         let matcher = ProductMatcher(context: context)

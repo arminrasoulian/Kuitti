@@ -21,7 +21,7 @@ struct ExportView: View {
                     Text("Line items").tag(CSVExporter.Scope.lineItems)
                 }
                 Picker("Format", selection: $format) {
-                    Text("Finnish Excel (;)").tag(CSVExporter.Format.finnishExcel)
+                    Text("Regional Excel (;)").tag(CSVExporter.Format.finnishExcel)
                     Text("Standard CSV (,)").tag(CSVExporter.Format.rfc4180)
                 }
             }

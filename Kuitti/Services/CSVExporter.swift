@@ -73,7 +73,7 @@ struct CSVExporter {
     }
 
     static func lineItemsCSV(_ transactions: [Transaction], format: Format) -> String {
-        var rows = [row(["Date", "Store", "Product", "Raw name", "Quantity", "Unit", "Unit price (EUR)", "Line total (EUR)", "Category", "Uncertain", "Discount/deposit"], format: format)]
+        var rows = [row(["Date", "Store", "Product", "Product (translated)", "Raw name", "Quantity", "Unit", "Unit price (EUR)", "Line total (EUR)", "Category", "Uncertain", "Discount/deposit"], format: format)]
         let items = transactions
             .flatMap { $0.lineItems ?? [] }
             .sorted { ($0.purchaseDate, $0.sortOrder) < ($1.purchaseDate, $1.sortOrder) }
@@ -82,6 +82,7 @@ struct CSVExporter {
                 item.purchaseDate.formatted(.iso8601.year().month().day()),
                 item.transaction?.store?.name ?? item.transaction?.payee ?? "",
                 item.displayName,
+                item.translatedName,
                 item.rawName,
                 format.number(item.quantity),
                 item.unitRaw,

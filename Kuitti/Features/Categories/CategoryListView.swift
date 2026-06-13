@@ -65,7 +65,7 @@ struct CategoryListView: View {
             }
             Spacer()
             if let budget = category.monthlyBudgetMinor {
-                Text(Money.euros(budget) + "/kk")
+                Text(Money.euros(budget) + "/mo")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

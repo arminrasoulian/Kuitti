@@ -21,52 +21,55 @@ nonisolated struct SeedAccountDef {
 nonisolated enum SeedCatalog {
     static let categories: [SeedCategoryDef] = [
         // Expense
-        .init(id: "seed.cat.groceries", name: "Ruokakauppa", kind: .expense, icon: "cart.fill", color: "#34A853",
+        .init(id: "seed.cat.groceries", name: "Groceries", kind: .expense, icon: "cart.fill", color: "#34A853",
               hint: "groceries, food and drink from supermarkets"),
-        .init(id: "seed.cat.restaurants", name: "Ravintolat ja kahvilat", kind: .expense, icon: "fork.knife", color: "#FF9500",
+        .init(id: "seed.cat.restaurants", name: "Restaurants & Cafés", kind: .expense, icon: "fork.knife", color: "#FF9500",
               hint: "restaurants, cafes, takeaway, lunch"),
-        .init(id: "seed.cat.housing", name: "Asuminen", kind: .expense, icon: "house.fill", color: "#5856D6",
-              hint: "rent, vastike, mortgage, home insurance"),
-        .init(id: "seed.cat.utilities", name: "Sähkö ja vesi", kind: .expense, icon: "bolt.fill", color: "#FFCC00",
+        .init(id: "seed.cat.housing", name: "Housing", kind: .expense, icon: "house.fill", color: "#5856D6",
+              hint: "rent, maintenance fee, mortgage, home insurance"),
+        .init(id: "seed.cat.utilities", name: "Utilities", kind: .expense, icon: "bolt.fill", color: "#FFCC00",
               hint: "electricity, water, heating, internet, phone plans"),
-        .init(id: "seed.cat.transport", name: "Liikenne", kind: .expense, icon: "tram.fill", color: "#007AFF",
-              hint: "public transport, HSL, taxis, train and bus tickets"),
-        .init(id: "seed.cat.car", name: "Auto ja polttoaine", kind: .expense, icon: "fuelpump.fill", color: "#64D2FF",
+        .init(id: "seed.cat.transport", name: "Transport", kind: .expense, icon: "tram.fill", color: "#007AFF",
+              hint: "public transport, taxis, train and bus tickets"),
+        .init(id: "seed.cat.car", name: "Car & Fuel", kind: .expense, icon: "fuelpump.fill", color: "#64D2FF",
               hint: "fuel, parking, car maintenance, car wash"),
-        .init(id: "seed.cat.health", name: "Terveys ja apteekki", kind: .expense, icon: "cross.case.fill", color: "#FF3B30",
+        .init(id: "seed.cat.health", name: "Health & Pharmacy", kind: .expense, icon: "cross.case.fill", color: "#FF3B30",
               hint: "pharmacy, medicine, doctor, dentist, vitamins"),
-        .init(id: "seed.cat.clothing", name: "Vaatteet", kind: .expense, icon: "tshirt.fill", color: "#AF52DE",
+        .init(id: "seed.cat.clothing", name: "Clothing", kind: .expense, icon: "tshirt.fill", color: "#AF52DE",
               hint: "clothing, shoes, accessories"),
-        .init(id: "seed.cat.kids", name: "Lapset", kind: .expense, icon: "figure.and.child.holdinghands", color: "#FF2D55",
+        .init(id: "seed.cat.kids", name: "Kids", kind: .expense, icon: "figure.and.child.holdinghands", color: "#FF2D55",
               hint: "children's items, toys, daycare, baby products, diapers"),
-        .init(id: "seed.cat.pets", name: "Lemmikit", kind: .expense, icon: "pawprint.fill", color: "#C7843D",
+        .init(id: "seed.cat.pets", name: "Pets", kind: .expense, icon: "pawprint.fill", color: "#C7843D",
               hint: "pet food, vet, pet supplies"),
-        .init(id: "seed.cat.hobbies", name: "Harrastukset ja urheilu", kind: .expense, icon: "figure.run", color: "#30B0C7",
+        .init(id: "seed.cat.hobbies", name: "Hobbies & Sports", kind: .expense, icon: "figure.run", color: "#30B0C7",
               hint: "sports, gym, hobby gear and fees"),
-        .init(id: "seed.cat.entertainment", name: "Viihde ja tilaukset", kind: .expense, icon: "tv.fill", color: "#5AC8FA",
+        .init(id: "seed.cat.entertainment", name: "Entertainment & Subscriptions", kind: .expense, icon: "tv.fill", color: "#5AC8FA",
               hint: "streaming subscriptions, games, movies, events, books"),
-        .init(id: "seed.cat.household", name: "Kodin tarvikkeet", kind: .expense, icon: "lamp.table.fill", color: "#A2845E",
+        .init(id: "seed.cat.household", name: "Household", kind: .expense, icon: "lamp.table.fill", color: "#A2845E",
               hint: "household goods, cleaning supplies, kitchenware, tools, furniture"),
-        .init(id: "seed.cat.gifts", name: "Lahjat ja juhlat", kind: .expense, icon: "gift.fill", color: "#BF5AF2",
+        .init(id: "seed.cat.gifts", name: "Gifts & Celebrations", kind: .expense, icon: "gift.fill", color: "#BF5AF2",
               hint: "gifts, celebrations, parties"),
-        .init(id: "seed.cat.other", name: "Muut menot", kind: .expense, icon: "ellipsis.circle.fill", color: "#8E8E93",
+        .init(id: "seed.cat.other", name: "Other Expenses", kind: .expense, icon: "ellipsis.circle.fill", color: "#8E8E93",
               hint: "anything that fits no other category"),
         // Income
-        .init(id: "seed.cat.salary", name: "Palkka", kind: .income, icon: "banknote.fill", color: "#34C759",
+        .init(id: "seed.cat.salary", name: "Salary", kind: .income, icon: "banknote.fill", color: "#34C759",
               hint: "salary and wages"),
-        .init(id: "seed.cat.benefits", name: "Etuudet (Kela)", kind: .income, icon: "building.columns.fill", color: "#32ADE6",
-              hint: "Kela benefits and allowances"),
-        .init(id: "seed.cat.otherIncome", name: "Muut tulot", kind: .income, icon: "plus.circle.fill", color: "#98989D",
+        .init(id: "seed.cat.benefits", name: "Benefits", kind: .income, icon: "building.columns.fill", color: "#32ADE6",
+              hint: "government benefits and allowances"),
+        .init(id: "seed.cat.otherIncome", name: "Other Income", kind: .income, icon: "plus.circle.fill", color: "#98989D",
               hint: "other income, refunds, sales"),
     ]
 
     static let accounts: [SeedAccountDef] = [
-        .init(id: "seed.acct.joint", name: "Yhteinen tili", type: .bank, isDefault: true),
-        .init(id: "seed.acct.cash", name: "Käteinen", type: .cash, isDefault: false),
+        .init(id: "seed.acct.joint", name: "Joint Account", type: .bank, isDefault: true),
+        .init(id: "seed.acct.cash", name: "Cash", type: .cash, isDefault: false),
     ]
 
-    /// The undeletable fallback category name, used by Gemini decode fallback and category deletion.
-    static let fallbackCategoryName = "Muut menot"
+    /// The undeletable fallback category name, used as the Gemini enum value for new installs
+    /// and by category deletion. NOTE: existing installs may still have the original-language
+    /// name — resolve the fallback by `fallbackCategorySeedID`, not this string (see
+    /// ReceiptImportService.fallbackCategoryUUID).
+    static let fallbackCategoryName = "Other Expenses"
     static let fallbackCategorySeedID = "seed.cat.other"
 }
 

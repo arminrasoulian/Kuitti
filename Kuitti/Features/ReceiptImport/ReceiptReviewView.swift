@@ -136,7 +136,7 @@ struct ReceiptReviewView: View {
             }
             ForEach(Array(draft.wrappedValue.vatLines.enumerated()), id: \.offset) { _, vat in
                 HStack {
-                    Text("ALV \(vat.ratePercent.formatted(.number.precision(.fractionLength(0...2)))) %")
+                    Text("VAT \(vat.ratePercent.formatted(.number.precision(.fractionLength(0...2)))) %")
                         .foregroundStyle(.secondary)
                     Spacer()
                     if let base = vat.baseMinor {

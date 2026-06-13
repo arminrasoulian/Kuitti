@@ -4,10 +4,19 @@ import SwiftData
 @Model
 final class Product {
     var uuid: UUID = UUID()
-    // "Banaani", "Arla laktoositon maito 1L"
+    // Cleaned name in the receipt's ORIGINAL language: "Banaani", "Arla laktoositon maito 1L".
     var canonicalName: String = ""
     // Matching key: lowercased, whitespace-collapsed, punctuation-stripped, ä/ö/å PRESERVED.
     var normalizedKey: String = ""
+    // App-language (English) translation of canonicalName. Empty when canonicalName is already
+    // in the app language or is an untranslatable brand/proper noun. Display-only on its own.
+    var translatedName: String = ""
+    // BCP-47 code of canonicalName's language ("fi", "de", …); "" = unknown.
+    var sourceLanguage: String = ""
+    // Normalized key of translatedName — the SECOND fuzzy-scoring input that bridges
+    // languages (a German "Banane" line, translated to "Banana", can suggest the Finnish
+    // "Banaani" product). Recomputed wherever normalizedKey is.
+    var translatedNormalizedKey: String = ""
     var defaultUnitRaw: String = UnitKind.piece.rawValue
     // From the barcode flow. NOT unique — duplicates are merged in code (CloudKit forbids uniques).
     var ean: String?

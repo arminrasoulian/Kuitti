@@ -18,22 +18,22 @@ struct ReceiptMappingTests {
       "paymentMethod": "cash",
       "lineItems": [
         { "rawName": "KURKKU SUOMI", "canonicalName": "Kurkku", "quantity": 0.652, "unit": "kg",
-          "unitPrice": "2.99", "lineTotal": "1.95", "suggestedCategory": "Ruokakauppa",
+          "unitPrice": "2.99", "lineTotal": "1.95", "suggestedCategory": "Groceries",
           "uncertain": false, "uncertaintyReason": null, "isDiscountOrDeposit": false },
         { "rawName": "BANAANI", "canonicalName": "Banaani", "quantity": 1, "unit": "pcs",
-          "unitPrice": "1.20", "lineTotal": "1.20", "suggestedCategory": "Ruokakauppa",
+          "unitPrice": "1.20", "lineTotal": "1.20", "suggestedCategory": "Groceries",
           "uncertain": true, "uncertaintyReason": "no quantity printed; product may be weight-priced", "isDiscountOrDeposit": false },
         { "rawName": "KOFF III 0,33L", "canonicalName": "Koff III 0,33L", "quantity": 6, "unit": "pcs",
-          "unitPrice": "0.89", "lineTotal": "5.34", "suggestedCategory": "Ruokakauppa",
+          "unitPrice": "0.89", "lineTotal": "5.34", "suggestedCategory": "Groceries",
           "uncertain": false, "uncertaintyReason": null, "isDiscountOrDeposit": false },
         { "rawName": "PANTTI 0,15", "canonicalName": "Pantti", "quantity": 6, "unit": "pcs",
-          "unitPrice": "0.15", "lineTotal": "0.90", "suggestedCategory": "Ruokakauppa",
+          "unitPrice": "0.15", "lineTotal": "0.90", "suggestedCategory": "Groceries",
           "uncertain": false, "uncertaintyReason": null, "isDiscountOrDeposit": true },
         { "rawName": "PLUSSA-ETU", "canonicalName": "Plussa-etu", "quantity": 1, "unit": "pcs",
-          "unitPrice": "-0.50", "lineTotal": "-0.50", "suggestedCategory": "Ruokakauppa",
+          "unitPrice": "-0.50", "lineTotal": "-0.50", "suggestedCategory": "Groceries",
           "uncertain": false, "uncertaintyReason": null, "isDiscountOrDeposit": true },
         { "rawName": "PYÖRISTYS", "canonicalName": "Pyöristys", "quantity": 1, "unit": "pcs",
-          "unitPrice": "0.01", "lineTotal": "0.01", "suggestedCategory": "Ruokakauppa",
+          "unitPrice": "0.01", "lineTotal": "0.01", "suggestedCategory": "Groceries",
           "uncertain": false, "uncertaintyReason": null, "isDiscountOrDeposit": true }
       ],
       "vatBreakdown": [
@@ -95,6 +95,44 @@ struct ReceiptMappingTests {
         #expect(draft.totalMismatchMinor == nil)
         // Category resolved to the seeded groceries category.
         #expect(draft.lines[0].suggestedCategoryUUID != nil)
+    }
+
+    /// A non-Finnish receipt: source language + translation flow into the draft, and the
+    /// fallback category resolves by seed identifier even when its name isn't the constant
+    /// (proving existing installs with a localized fallback name still categorize).
+    static let germanJSON = """
+    {
+      "isReceipt": true,
+      "store": { "rawName": "REWE", "normalizedName": "REWE" },
+      "date": "2026-06-10", "time": null, "paymentMethod": "card",
+      "lineItems": [
+        { "rawName": "VOLLMILCH 1L", "canonicalName": "Vollmilch 1L", "sourceLanguage": "de",
+          "translatedName": "Whole milk 1L", "quantity": 1, "unit": "pcs",
+          "unitPrice": "1.09", "lineTotal": "1.09", "suggestedCategory": "Nichtvorhanden",
+          "uncertain": false, "uncertaintyReason": null, "isDiscountOrDeposit": false }
+      ],
+      "vatBreakdown": [], "subtotal": null, "total": "1.09",
+      "currency": "EUR", "confidence": "high", "warnings": []
+    }
+    """
+
+    @Test func translationFieldsMapAndFallbackResolvesBySeedID() throws {
+        let context = try makeContext()
+        // Rename the seeded fallback category away from the constant — only the seed
+        // identifier should be used to find it.
+        let fallback = ReceiptImportService.fallbackCategory(modelContext: context)
+        fallback?.name = "Sekalaista"
+        try context.save()
+
+        let dto = try JSONDecoder().decode(GeminiReceiptDTO.self, from: Data(Self.germanJSON.utf8))
+        let categoryMap = ReceiptImportService.categoryUUIDMap(modelContext: context)
+        let draft = try ReceiptImportService.draft(from: dto, pages: [], categoryMap: categoryMap, modelContext: context)
+
+        let line = draft.lines[0]
+        #expect(line.sourceLanguage == "de")
+        #expect(line.translatedName == "Whole milk 1L")
+        // Unknown category → fell back to the renamed seed-other category by its seed ID.
+        #expect(line.suggestedCategoryUUID == fallback?.uuid)
     }
 
     @Test func notAReceiptThrowsWithModelReason() throws {

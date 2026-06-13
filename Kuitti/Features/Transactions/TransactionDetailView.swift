@@ -167,20 +167,29 @@ struct TransactionDetailView: View {
 private struct LineItemRow: View {
     let item: LineItem
 
+    private var name: NameDisplay { item.nameDisplay }
+
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 4) {
-                    Text(item.displayName.isEmpty ? item.rawName : item.displayName)
+                    Text(name.primary)
                     if item.quantityIsUncertain {
                         UncertaintyBadge()
                             .font(.caption)
                     }
                 }
-                if !item.rawName.isEmpty && item.rawName != item.displayName {
-                    Text(item.rawName)
+                // Original-language name when a translation is the primary line.
+                if let original = name.secondary {
+                    Text(original)
                         .font(.caption2)
                         .foregroundStyle(.secondary)
+                }
+                // The exact printed text, when it adds something beyond the names above.
+                if !item.rawName.isEmpty && item.rawName != name.primary && item.rawName != name.secondary {
+                    Text(item.rawName)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
                 }
                 Text(metricsLine)
                     .font(.caption)

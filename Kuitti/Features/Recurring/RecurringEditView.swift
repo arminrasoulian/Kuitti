@@ -52,7 +52,7 @@ struct RecurringEditView: View {
 
     private var basicsSection: some View {
         Section {
-            TextField("Name (e.g. Vuokra, Palkka)", text: $name)
+            TextField("Name (e.g. Rent, Salary)", text: $name)
             Picker("Type", selection: $kind) {
                 Text("Expense").tag(TransactionKind.expense)
                 Text("Income").tag(TransactionKind.income)

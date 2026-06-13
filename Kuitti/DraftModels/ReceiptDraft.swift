@@ -43,6 +43,10 @@ nonisolated struct LineDraft: Identifiable, Sendable {
     var id = UUID()
     var rawName: String
     var canonicalName: String
+    /// App-language translation of canonicalName from Gemini; nil/"" when already app-language.
+    var translatedName: String? = nil
+    /// Detected BCP-47 language of the printed line.
+    var sourceLanguage: String? = nil
     var quantity: Double
     var unit: UnitKind
     var lineTotalMinor: Int
@@ -82,6 +86,8 @@ nonisolated enum ProductResolution: Sendable, Equatable {
 /// Result of the product-package-photo identification flow.
 nonisolated struct ProductIdentification: Codable, Sendable {
     var productName: String
+    var sourceLanguage: String?
+    var translatedName: String?
     var brand: String?
     var size: String?
     var confidence: String

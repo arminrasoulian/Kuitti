@@ -15,8 +15,11 @@ struct ProductDetailView: View {
 
     var body: some View {
         List {
-            if product.brand != nil || product.ean != nil {
+            if product.brand != nil || product.ean != nil || product.nameDisplay.secondary != nil {
                 Section {
+                    if let original = product.nameDisplay.secondary {
+                        LabeledContent("Original name", value: original)
+                    }
                     if let brand = product.brand {
                         LabeledContent("Brand", value: brand)
                     }
@@ -49,7 +52,7 @@ struct ProductDetailView: View {
                 }
             }
         }
-        .navigationTitle(product.canonicalName)
+        .navigationTitle(product.nameDisplay.primary)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
@@ -196,7 +199,7 @@ private struct MergeTargetPicker: View {
                             onPick(candidate)
                         } label: {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(candidate.canonicalName)
+                                Text(candidate.nameDisplay.primary)
                                     .foregroundStyle(.primary)
                                 if candidate.purchaseCount > 0 {
                                     Text("\(candidate.purchaseCount)× purchased")
@@ -225,7 +228,10 @@ private struct MergeTargetPicker: View {
             .sorted { $0.canonicalName.localizedStandardCompare($1.canonicalName) == .orderedAscending }
         let key = TextNormalizer.key(searchText)
         guard !key.isEmpty else { return others }
-        return others.filter { TextNormalizer.key($0.canonicalName).contains(key) }
+        return others.filter {
+            TextNormalizer.key($0.canonicalName).contains(key)
+                || TextNormalizer.key($0.translatedName).contains(key)
+        }
     }
 }
 
