@@ -224,6 +224,26 @@ struct TransactionEditView: View {
         }
     }
 
+    /// §3.4's learning step for the edit path: apply the product choice the user made in
+    /// the line editor sheet for renamed, already-saved items. New lines stay product-less
+    /// (same as manual add).
+    private func applyProductRelinks(with editor: TransactionEditor) throws {
+        let matcher = ProductMatcher(context: modelContext)
+        for draft in lineDrafts {
+            guard let item = draft.item else { continue }
+            switch draft.productAction {
+            case .keep:
+                continue
+            case .link(let uuid):
+                guard let product = matcher.product(withUUID: uuid) else { continue }
+                try editor.relinkProduct(for: item, to: product)
+            case .createNew:
+                let product = matcher.findOrCreateProduct(canonicalName: draft.name, defaultUnit: draft.unit)
+                try editor.relinkProduct(for: item, to: product)
+            }
+        }
+    }
+
     // MARK: - Save
 
     private func save() {
@@ -239,6 +259,7 @@ struct TransactionEditView: View {
                 existing.account = account
                 existing.category = category
                 applyManualLineDrafts(to: existing)
+                try applyProductRelinks(with: editor)
                 let hasLines = !(existing.lineItems ?? []).isEmpty
                 if let amount = parsedAmountMinor, !hasLines || amountTypedManually {
                     existing.amountMinor = amount
@@ -271,6 +292,14 @@ struct TransactionEditView: View {
 // MARK: - Line draft model
 
 private struct ManualLineDraft: Identifiable, Equatable {
+    /// What to do with item.product when a saved line was renamed (§3.4's learning
+    /// step, edit path) — chosen by the user in LineItemEditorSheet's relink offer.
+    enum ProductAction: Equatable {
+        case keep            // rename only — product link and aliases untouched
+        case link(UUID)      // point at this existing product
+        case createNew       // mint a product from the edited name
+    }
+
     let id: UUID
     var item: LineItem?
     var name: String
@@ -278,6 +307,7 @@ private struct ManualLineDraft: Identifiable, Equatable {
     var quantity: Double
     var unit: UnitKind
     var totalMinor: Int
+    var productAction: ProductAction = .keep
 
     init(item: LineItem) {
         self.id = item.uuid
@@ -325,11 +355,17 @@ private struct ManualLineDraftRow: View {
 // MARK: - Line item editor
 
 private struct LineItemEditorSheet: View {
+    @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     @State private var name: String
     @State private var quantityText: String
     @State private var unit: UnitKind
     @State private var totalText: String
+    // Relink offer state: a saved line was renamed, the user must choose what the
+    // new name means before the draft is handed back.
+    @State private var pendingDraft: ManualLineDraft?
+    @State private var suggestedProduct: Product?
+    @State private var showingRelinkOffer = false
 
     private let draft: ManualLineDraft
     private let onSave: (ManualLineDraft) -> Void
@@ -386,6 +422,18 @@ private struct LineItemEditorSheet: View {
                         .disabled(!canSave)
                 }
             }
+            .confirmationDialog("You renamed this item", isPresented: $showingRelinkOffer, titleVisibility: .visible) {
+                if let suggested = suggestedProduct {
+                    Button("Link to \"\(suggested.canonicalName)\"") { finishRelink(.link(suggested.uuid)) }
+                }
+                if canOfferCreate {
+                    Button("Create product \"\(pendingDraft?.name ?? "")\"") { finishRelink(.createNew) }
+                }
+                Button("Just rename this line") { finishRelink(.keep) }
+                Button("Cancel", role: .cancel) { pendingDraft = nil }
+            } message: {
+                Text(relinkMessage)
+            }
         }
         .presentationDetents([.medium, .large])
     }
@@ -415,6 +463,46 @@ private struct LineItemEditorSheet: View {
         updated.quantity = quantity
         updated.unit = unit
         updated.totalMinor = total
+
+        // Renaming a saved (non-discount) line is a §3.4 correction: resolve the new name
+        // the same way the review screen would and offer to re-link the product, so the
+        // alias gets repointed and the mistake never recurs on future receipts.
+        if let item = draft.item, !item.isDiscountOrDeposit,
+           updated.name != item.displayName,
+           !TextNormalizer.key(updated.name).isEmpty {
+            let matcher = ProductMatcher(context: modelContext)
+            let resolution = matcher.resolve(rawName: updated.name, proposedCanonical: updated.name,
+                                             unit: updated.unit, store: item.transaction?.store)
+            suggestedProduct = resolution.productUUID.flatMap { matcher.product(withUUID: $0) }
+            pendingDraft = updated
+            showingRelinkOffer = true
+            return
+        }
+        updated.productAction = .keep
+        onSave(updated)
+        dismiss()
+    }
+
+    // MARK: - Relink offer
+
+    /// Hide "Create" when it would just find the suggested product again (same key).
+    private var canOfferCreate: Bool {
+        guard let suggested = suggestedProduct else { return true }
+        return TextNormalizer.key(pendingDraft?.name ?? "") != suggested.normalizedKey
+    }
+
+    private var relinkMessage: String {
+        let raw = draft.item?.rawName ?? ""
+        if raw.isEmpty || raw == pendingDraft?.name {
+            return "Linking teaches Kuitti which product this line means."
+        }
+        return "Linking teaches Kuitti what \"\(raw)\" means on future receipts."
+    }
+
+    private func finishRelink(_ action: ManualLineDraft.ProductAction) {
+        guard var updated = pendingDraft else { return }
+        updated.productAction = action
+        pendingDraft = nil
         onSave(updated)
         dismiss()
     }

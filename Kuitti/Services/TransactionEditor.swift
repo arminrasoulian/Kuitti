@@ -131,6 +131,28 @@ struct TransactionEditor {
         try save()
     }
 
+    /// §3.4's learning step for the post-save edit path: the user corrected a saved line
+    /// item to a different product. Points item.product at the chosen product and repoints
+    /// the (store, rawName) alias at it with source .user — overwriting a wrong Gemini/fuzzy
+    /// mapping so the same mistake never recurs — then recomputes stats for both products.
+    func relinkProduct(for item: LineItem, to product: Product) throws {
+        let previous = item.product
+        item.product = product
+        let matcher = ProductMatcher(context: context)
+        // Manual lines have no separate receipt text; their original name is the raw key.
+        let aliasRawName = item.rawName.isEmpty ? item.displayName : item.rawName
+        matcher.upsertAlias(rawName: aliasRawName, store: item.transaction?.store, product: product, source: .user)
+        item.transaction?.updatedAt = Date()
+        // Save before recomputing so the old product's inverse no longer lists this item
+        // (same defensive pattern as delete()).
+        try save()
+        if let previous, previous.persistentModelID != product.persistentModelID {
+            recomputeStats(for: previous)
+        }
+        recomputeStats(for: product)
+        try save()
+    }
+
     func delete(_ transaction: Transaction) throws {
         // Collect affected products before the cascade removes the line items.
         var touched: [Product] = []
