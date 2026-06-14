@@ -152,6 +152,113 @@ struct TransactionEditorTests {
         #expect((survivor.lineItems ?? []).count == 2)
     }
 
+    @Test func updateProductRecomputesKeysAndKeepsStats() throws {
+        let context = try makeContext()
+        let editor = TransactionEditor(context: context)
+        let matcher = ProductMatcher(context: context)
+        let product = matcher.findOrCreateProduct(canonicalName: "Pepsi", defaultUnit: .piece)
+
+        // One purchase, so we can confirm the edit leaves stats untouched.
+        let transaction = try editor.createManual(kind: .expense, date: Date(), amountMinor: 200,
+                                                  payee: "Lidl", account: nil, category: nil, notes: "", paymentMethod: .card)
+        let item = LineItem(rawName: "PEPSI", displayName: "Pepsi", quantity: 1, unit: .piece, lineTotalMinor: 200)
+        item.transaction = transaction; item.product = product; context.insert(item)
+        try editor.didEdit(transaction)
+        #expect(product.purchaseCount == 1)
+
+        try editor.updateProduct(product, canonicalName: "Pepsi Max 0,5L",
+                                 translatedName: "Pepsi Max 0.5L bottle",
+                                 brand: "Pepsi", ean: "1234567890123", defaultUnit: .litre)
+
+        #expect(product.canonicalName == "Pepsi Max 0,5L")
+        #expect(product.normalizedKey == TextNormalizer.key("Pepsi Max 0,5L"))
+        #expect(product.translatedName == "Pepsi Max 0.5L bottle")
+        #expect(product.translatedNormalizedKey == TextNormalizer.key("Pepsi Max 0.5L bottle"))
+        #expect(product.brand == "Pepsi")
+        #expect(product.ean == "1234567890123")
+        #expect(product.defaultUnit == .litre)
+        // Editing identity fields doesn't touch purchase history.
+        #expect(product.purchaseCount == 1)
+    }
+
+    @Test func updateProductBlankFieldsBecomeNilAndClearedTranslationResetsKey() throws {
+        let context = try makeContext()
+        let editor = TransactionEditor(context: context)
+        let matcher = ProductMatcher(context: context)
+        let product = matcher.findOrCreateProduct(canonicalName: "Banaani", defaultUnit: .kilogram,
+                                                  translatedName: "Banana", sourceLanguage: "fi")
+        product.brand = "Chiquita"; product.ean = "9999999999999"
+        try context.save()
+
+        try editor.updateProduct(product, canonicalName: "Banaani", translatedName: "  ",
+                                 brand: "   ", ean: "", defaultUnit: .kilogram)
+
+        #expect(product.translatedName == "")
+        #expect(product.translatedNormalizedKey == "")   // stale bridge key cleared
+        #expect(product.brand == nil)
+        #expect(product.ean == nil)
+    }
+
+    @Test func deleteProductRefusesWhenReferenced() throws {
+        let context = try makeContext()
+        let editor = TransactionEditor(context: context)
+        let matcher = ProductMatcher(context: context)
+        let product = matcher.findOrCreateProduct(canonicalName: "Banaani", defaultUnit: .kilogram)
+        let transaction = try editor.createManual(kind: .expense, date: Date(), amountMinor: 120,
+                                                  payee: "Lidl", account: nil, category: nil, notes: "", paymentMethod: .card)
+        let item = LineItem(rawName: "BANAANI", displayName: "Banaani", quantity: 1, unit: .kilogram, lineTotalMinor: 120)
+        item.transaction = transaction; item.product = product; context.insert(item)
+        try editor.didEdit(transaction)
+
+        let deleted = try editor.deleteProduct(product)
+        #expect(deleted == false)
+        // Product and its line item survive untouched.
+        #expect(try context.fetch(FetchDescriptor<Product>()).count == 1)
+        #expect(item.product?.uuid == product.uuid)
+    }
+
+    @Test func deleteProductSucceedsAndCascadesAliases() throws {
+        let context = try makeContext()
+        let editor = TransactionEditor(context: context)
+        let matcher = ProductMatcher(context: context)
+        let product = matcher.findOrCreateProduct(canonicalName: "Pepsi Max 0,5L", defaultUnit: .piece)
+        matcher.upsertAlias(rawName: "PEPSI MAX", store: nil, product: product, source: .user)
+        try context.save()
+        #expect(try context.fetch(FetchDescriptor<ProductAlias>()).count == 1)
+
+        let deleted = try editor.deleteProduct(product)
+        #expect(deleted == true)
+        #expect(try context.fetch(FetchDescriptor<Product>()).isEmpty)
+        // Aliases cascade with the product (deleteRule .cascade).
+        #expect(try context.fetch(FetchDescriptor<ProductAlias>()).isEmpty)
+    }
+
+    @Test func linkBarcodeStampsEanAndFillsBrandOnlyWhenMissing() throws {
+        let context = try makeContext()
+        let editor = TransactionEditor(context: context)
+        let matcher = ProductMatcher(context: context)
+        let noBrand = matcher.findOrCreateProduct(canonicalName: "Pepsi Max", defaultUnit: .piece)
+        try editor.linkBarcode("1234567890123", brand: "Pepsi", to: noBrand)
+        #expect(noBrand.ean == "1234567890123")
+        #expect(noBrand.brand == "Pepsi")
+
+        let hasBrand = matcher.findOrCreateProduct(canonicalName: "Coca-Cola", defaultUnit: .piece)
+        hasBrand.brand = "Coca-Cola Company"
+        try editor.linkBarcode("3210987654321", brand: "Coke", to: hasBrand)
+        #expect(hasBrand.ean == "3210987654321")
+        #expect(hasBrand.brand == "Coca-Cola Company")   // existing brand not overwritten
+    }
+
+    @Test func linkBarcodeReplacesADifferingEan() throws {
+        let context = try makeContext()
+        let editor = TransactionEditor(context: context)
+        let matcher = ProductMatcher(context: context)
+        let product = matcher.findOrCreateProduct(canonicalName: "Pepsi Max", defaultUnit: .piece)
+        product.ean = "0000000000000"
+        try editor.linkBarcode("1234567890123", brand: nil, to: product)
+        #expect(product.ean == "1234567890123")   // replaced, matching the "Replace Barcode" UX
+    }
+
     @Test func deleteRecomputesProductStats() throws {
         let context = try makeContext()
         let editor = TransactionEditor(context: context)

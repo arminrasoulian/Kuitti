@@ -181,7 +181,48 @@ struct ProductMatcherTests {
         _ = matcher.findOrCreateProduct(canonicalName: "Banaani", defaultUnit: .kilogram)
         try context.save()
 
-        let candidates = matcher.candidates(forOFFName: "Rasvaton maito", brand: "Valio")
+        let candidates = matcher.candidates(forOFFName: "Rasvaton maito", brand: "Valio", offSize: nil)
         #expect(candidates.first?.product.canonicalName == "Valio rasvaton maito 1L")
+    }
+
+    @Test func offCandidatesFlagAndDemoteSizeMismatch() throws {
+        let context = try makeContext()
+        let matcher = ProductMatcher(context: context)
+        _ = matcher.findOrCreateProduct(canonicalName: "Valio Maito 1L", defaultUnit: .piece)
+        _ = matcher.findOrCreateProduct(canonicalName: "Valio Maito 2L", defaultUnit: .piece)
+        try context.save()
+
+        // Scanning a 1 L milk: both names match well, but the 2 L is a different size.
+        let candidates = matcher.candidates(forOFFName: "Maito", brand: "Valio", offSize: "1 l")
+        #expect(candidates.count == 2)
+        // The same-size product sorts first and isn't flagged; the other size is flagged.
+        #expect(candidates.first?.product.canonicalName == "Valio Maito 1L")
+        #expect(candidates.first?.sizeMismatch == false)
+        let other = candidates.first { $0.product.canonicalName == "Valio Maito 2L" }
+        #expect(other?.sizeMismatch == true)
+    }
+
+    @Test func offCandidatesDontFlagWhenOFFSizeMissing() throws {
+        let context = try makeContext()
+        let matcher = ProductMatcher(context: context)
+        _ = matcher.findOrCreateProduct(canonicalName: "Valio Maito 2L", defaultUnit: .piece)
+        try context.save()
+
+        // No OFF size to compare against → never flag a mismatch (ambiguous, not different).
+        let candidates = matcher.candidates(forOFFName: "Maito", brand: "Valio", offSize: nil)
+        #expect(candidates.first?.sizeMismatch == false)
+    }
+
+    @Test func offCandidatesSurfaceSameNamedProductSoCreateDoesntClobber() throws {
+        let context = try makeContext()
+        let matcher = ProductMatcher(context: context)
+        let existing = matcher.findOrCreateProduct(canonicalName: "Pepsi Max 0,5L", defaultUnit: .piece)
+        existing.ean = "1111111111111"
+        try context.save()
+
+        // Typing the same name in the unknown-barcode path surfaces the existing product as a
+        // candidate (score 1.0), so the UI offers inspect-then-link instead of silently reusing it.
+        let candidates = matcher.candidates(forOFFName: "Pepsi Max 0,5L", brand: nil, offSize: nil)
+        #expect(candidates.contains { $0.product.uuid == existing.uuid })
     }
 }

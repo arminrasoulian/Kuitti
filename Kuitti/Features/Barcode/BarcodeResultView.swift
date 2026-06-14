@@ -15,7 +15,8 @@ struct BarcodeResultView: View {
     @Environment(AppEnvironment.self) private var env
 
     @State private var resolvedProduct: Product?
-    @State private var candidates: [Product] = []
+    @State private var candidates: [ProductMatcher.OFFCandidate] = []
+    @State private var missChoice: MissChoice?
     @State private var manualName = ""
     @State private var photoItem: PhotosPickerItem?
     @State private var identifyTask: Task<Void, Never>?
@@ -28,6 +29,8 @@ struct BarcodeResultView: View {
         Group {
             if let resolvedProduct {
                 ProductDetailView(product: resolvedProduct)
+            } else if let missChoice {
+                missChooserForm(missChoice)
             } else if let off = offProduct, let offName = off.bestName {
                 hitForm(off: off, offName: offName)
             } else {
@@ -36,9 +39,9 @@ struct BarcodeResultView: View {
         }
         .sheet(item: $proposal) { proposed in
             ProposalConfirmSheet(proposal: proposed) { name, brand in
-                createProduct(named: name, brand: brand,
-                              translatedName: proposed.translatedName, sourceLanguage: proposed.sourceLanguage)
                 proposal = nil
+                attemptCreate(name: name, brand: brand,
+                              translatedName: proposed.translatedName, sourceLanguage: proposed.sourceLanguage)
             }
         }
         .alert("Couldn't Save", isPresented: saveErrorBinding) {
@@ -63,25 +66,7 @@ struct BarcodeResultView: View {
                 }
                 LabeledContent("Barcode", value: ean)
             }
-            if !candidates.isEmpty {
-                Section("Is this one of your products?") {
-                    ForEach(candidates) { candidate in
-                        Button {
-                            adopt(candidate, brand: primaryBrand(off.brands))
-                        } label: {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(candidate.nameDisplay.primary)
-                                    .foregroundStyle(.primary)
-                                if candidate.purchaseCount > 0 {
-                                    Text("\(candidate.purchaseCount)× purchased")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+            candidateSection(candidates, brand: primaryBrand(off.brands), offName: offName, offSize: off.quantity)
             Section {
                 Button("Create New Product", systemImage: "plus") {
                     // OFF names are already in the app language (we request that variant).
@@ -90,15 +75,40 @@ struct BarcodeResultView: View {
                     adopt(product, brand: primaryBrand(off.brands))
                 }
             } footer: {
-                Text("Linking saves the barcode, so the next scan opens the price history instantly.")
+                Text("Tap a product above to inspect it before linking, or create a new one. Linking saves the barcode so the next scan opens its price history instantly.")
             }
         }
         .navigationTitle("Product Found")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             candidates = ProductMatcher(context: context)
-                .candidates(forOFFName: offName, brand: primaryBrand(off.brands))
-                .map(\.product)
+                .candidates(forOFFName: offName, brand: primaryBrand(off.brands), offSize: off.quantity)
+        }
+    }
+
+    /// Shared candidate list (OFF-hit and OFF-miss): each row pushes the product's full detail
+    /// with a pending barcode-link decision, so the user inspects price history before linking
+    /// instead of committing on tap.
+    @ViewBuilder
+    private func candidateSection(_ candidates: [ProductMatcher.OFFCandidate],
+                                  brand: String?, offName: String?, offSize: String?) -> some View {
+        if !candidates.isEmpty {
+            Section("Is this one of your products?") {
+                ForEach(candidates, id: \.product.uuid) { candidate in
+                    NavigationLink {
+                        ProductDetailView(
+                            product: candidate.product,
+                            pendingBarcode: PendingBarcodeLink(
+                                ean: ean, brand: brand,
+                                sizeMismatch: candidate.sizeMismatch,
+                                offName: offName, offSize: offSize
+                            )
+                        )
+                    } label: {
+                        CandidateRow(candidate: candidate)
+                    }
+                }
+            }
         }
     }
 
@@ -118,7 +128,7 @@ struct BarcodeResultView: View {
             Section("Name it yourself") {
                 TextField("Product name", text: $manualName)
                 Button("Create Product") {
-                    createProduct(named: manualName, brand: nil)
+                    attemptCreate(name: manualName, brand: nil)
                 }
                 .disabled(manualName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
@@ -190,20 +200,58 @@ struct BarcodeResultView: View {
         return ((try? context.fetch(fetch)) ?? []).map(\.canonicalName)
     }
 
+    // MARK: - OFF miss / manual: similar-products chooser
+
+    /// OFF-miss / manual / photo path: the user supplied a name and we found similar existing
+    /// products. Inspect-then-link each (via the pushed detail), or create the new product anyway.
+    private func missChooserForm(_ choice: MissChoice) -> some View {
+        Form {
+            Section {
+                Text("Before creating “\(choice.name)”, check whether it's one of these products you already have.")
+                    .font(.callout)
+            }
+            candidateSection(choice.candidates, brand: choice.brand, offName: choice.name, offSize: nil)
+            Section {
+                Button("Create New Product Anyway", systemImage: "plus") {
+                    createProduct(named: choice.name, brand: choice.brand,
+                                  translatedName: choice.translatedName, sourceLanguage: choice.sourceLanguage)
+                }
+            } footer: {
+                Text("This saves the barcode on a brand-new product.")
+            }
+        }
+        .navigationTitle("Similar Products")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
     // MARK: - Persisting
 
-    /// Stamps the scanned EAN (and brand, if missing) onto the chosen product.
+    /// Stamps the scanned EAN (and brand, if missing) onto the chosen product via the
+    /// TransactionEditor choke point, then shows its detail. Used by the create-new paths;
+    /// candidate links happen inside the pushed ProductDetailView itself.
     private func adopt(_ product: Product, brand: String?) {
-        product.ean = ean
-        if product.brand == nil, let brand, !brand.isEmpty {
-            product.brand = brand
-        }
-        product.updatedAt = Date()
         do {
-            try context.save()
+            try TransactionEditor(context: context).linkBarcode(ean, brand: brand, to: product)
+            env.duplicates.refresh(context: context)
             resolvedProduct = product
         } catch {
             saveError = AppError(wrapping: error).userMessage
+        }
+    }
+
+    /// Before creating, check whether a similarly-named product already exists (the AI/OFF name
+    /// can collide with one the user already has). If so, let the user inspect-then-link or
+    /// create anyway, instead of silently reusing/clobbering an existing product.
+    private func attemptCreate(name: String, brand: String?, translatedName: String = "", sourceLanguage: String = "") {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let found = ProductMatcher(context: context).candidates(forOFFName: trimmed, brand: brand, offSize: nil)
+        if found.isEmpty {
+            createProduct(named: trimmed, brand: brand, translatedName: translatedName, sourceLanguage: sourceLanguage)
+        } else {
+            missChoice = MissChoice(name: trimmed, brand: brand,
+                                    translatedName: translatedName, sourceLanguage: sourceLanguage,
+                                    candidates: found)
         }
     }
 
@@ -223,6 +271,54 @@ struct BarcodeResultView: View {
 
     private var saveErrorBinding: Binding<Bool> {
         Binding(get: { saveError != nil }, set: { if !$0 { saveError = nil } })
+    }
+}
+
+/// OFF-miss / manual state: a name the user supplied plus the similar existing products found,
+/// so the chooser can offer inspect-then-link or create-anyway.
+private struct MissChoice {
+    var name: String
+    var brand: String?
+    var translatedName: String
+    var sourceLanguage: String
+    var candidates: [ProductMatcher.OFFCandidate]
+}
+
+/// One existing-product row in the barcode candidate list: name, brand, purchase summary, and
+/// a "different size" flag so a multipack is obvious before the user drills in to inspect it.
+private struct CandidateRow: View {
+    let candidate: ProductMatcher.OFFCandidate
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(candidate.product.nameDisplay.primary)
+                .foregroundStyle(.primary)
+            if let subtitle {
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if candidate.sizeMismatch {
+                Label("Different size", systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
+            }
+        }
+    }
+
+    private var subtitle: String? {
+        let product = candidate.product
+        var parts: [String] = []
+        if let brand = product.brand, !brand.isEmpty { parts.append(brand) }
+        if product.purchaseCount > 0 {
+            var stat = "\(product.purchaseCount)×"
+            if let price = product.lastUnitPrice {
+                let amount = Decimal(price).formatted(.currency(code: "EUR").precision(.fractionLength(2...3)))
+                stat += " · last \(amount)"
+            }
+            parts.append(stat)
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 }
 

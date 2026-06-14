@@ -30,7 +30,8 @@
 ### 🧺 Products & price history
 - Saving a receipt automatically maintains **canonical products** so the *same* real-world product is recognized across stores and spellings. Resolution order: exact alias → local fuzzy match → AI proposal; saving "teaches" Kuitti by minting/repointing **aliases** so the next receipt resolves instantly with no AI.
 - **Multilingual product names:** each product keeps its **original-language name** plus an **app-language translation** (shown when they differ). Matching is size-aware and bridges languages (e.g. *Banaani* ↔ *Banana*).
-- **Product detail** shows purchase count, last price/store, a price-direction indicator, and a **Swift Charts unit-price timeline** colored by store. You can rename a product.
+- **Product detail** shows purchase count, last price/store, a price-direction indicator, and a **Swift Charts unit-price timeline** colored by store.
+- **Edit any detail** — name (the size lives in the name), English translation, brand, barcode, and unit — for the times the AI parse needs a tweak. **Delete** products you no longer want; a product still referenced by purchases is protected (you'll be told why), and deletes ask for confirmation.
 
 ### 🔁 Duplicate detection & merge
 - A background scan proposes products that look like the same thing (same barcode, near-identical or cross-language names), while **never** suggesting different sizes (1 L vs 2 L) as duplicates.
@@ -38,7 +39,7 @@
 - **Review duplicates** screen + a **merge preview** (pick which to keep, see the combined purchase count) consolidates all purchase history under the survivor. "Keep separate" is remembered so a rejected pair never reappears.
 
 ### 🏷️ Barcode lookup
-- Live **EAN-8/13** scanning. First scan: local `ean` lookup → **Open Food Facts** lookup → fuzzy-match to your existing products → confirming **stamps the barcode** onto the product so every future scan resolves locally and instantly.
+- Live **EAN-8/13** scanning. First scan: local `ean` lookup → **Open Food Facts** lookup → size-aware fuzzy match to your existing products. Matches are presented to **inspect before linking** — tap one to open its full price history (so a single bottle is never silently linked to a multipack), with different-size candidates clearly flagged — then **link the barcode** to it or **create a new product**. Linking **stamps the barcode** onto the product so every future scan resolves locally and instantly. The same inspect-then-link-or-create step guards the unknown-barcode (manual / photo) path too.
 - OFF miss (common for store brands) is a first-class flow: name it yourself or **photograph the package** for Gemini to identify.
 
 ### 💸 Transactions
