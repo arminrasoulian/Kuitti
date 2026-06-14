@@ -1,26 +1,45 @@
 import SwiftUI
+import SwiftData
 import Charts
 
-/// Expense breakdown donut for one month's transactions.
+/// Expense breakdown donut for the selected period's transactions.
 ///
-/// THE REPORTING RULE: itemized transactions attribute spend per line item's category
-/// (lineTotalMinor summed as-is, discounts included); un-itemized transactions attribute
-/// the whole amountMinor to the transaction's category. Nil categories pool under a gray
-/// "Uncategorized" slice.
+/// THE REPORTING RULE lives in `SpendingReport`: itemized transactions attribute spend per line
+/// item's category; un-itemized transactions attribute the whole amount to the transaction's
+/// category; nil categories pool under a gray "Uncategorized" slice (totals ≤ 0 are dropped —
+/// SectorMark can't render them).
+///
+/// Both the legend rows and the pie slices are tappable: they drill into `CategoryDetailView`
+/// for the period. (A `NavigationLink` can't live inside a `Chart` builder — it takes
+/// `ChartContent`, not `View` — so slice taps go through `chartAngleSelection` → a route, and the
+/// legend rows set the same route. One `navigationDestination` serves both.)
 struct CategoryDonutChart: View {
     let transactions: [Transaction]
+    let interval: DateInterval
+
+    @Query(sort: \Category.sortOrder) private var categories: [Category]
+    @State private var selectedValue: Int?
+    @State private var selectedRoute: CategoryRoute?
 
     var body: some View {
         let slices = makeSlices()
         let totalMinor = slices.reduce(0) { $0 + $1.totalMinor }
         if slices.isEmpty {
-            Text("No expenses this month.")
+            Text("No expenses in this period.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         } else {
             VStack(spacing: 16) {
                 donut(slices: slices, totalMinor: totalMinor)
                 legend(slices: slices, totalMinor: totalMinor)
+            }
+            .navigationDestination(item: $selectedRoute) { route in
+                CategoryDetailView(
+                    category: route.categoryValue,
+                    fallbackTitle: "Uncategorized",
+                    interval: interval,
+                    transactions: transactions
+                )
             }
         }
     }
@@ -36,6 +55,12 @@ struct CategoryDonutChart: View {
             .cornerRadius(3)
         }
         .chartLegend(.hidden)
+        .chartAngleSelection(value: $selectedValue)
+        .onChange(of: selectedValue) { _, newValue in
+            guard let newValue, let slice = slice(at: newValue, in: slices) else { return }
+            selectedRoute = slice.route
+            selectedValue = nil   // reset so re-tapping the same slice fires again
+        }
         .chartBackground { proxy in
             GeometryReader { geometry in
                 if let anchor = proxy.plotFrame {
@@ -58,23 +83,32 @@ struct CategoryDonutChart: View {
     private func legend(slices: [Slice], totalMinor: Int) -> some View {
         VStack(spacing: 8) {
             ForEach(slices) { slice in
-                HStack(spacing: 8) {
-                    Circle()
-                        .fill(slice.color)
-                        .frame(width: 10, height: 10)
-                    Text(slice.name)
-                        .font(.subheadline)
-                        .lineLimit(1)
-                    Spacer()
-                    Text(Money.euros(slice.totalMinor))
-                        .font(.subheadline)
-                        .monospacedDigit()
-                    Text(shareText(of: slice, totalMinor: totalMinor))
-                        .font(.caption)
-                        .monospacedDigit()
-                        .foregroundStyle(.secondary)
-                        .frame(width: 44, alignment: .trailing)
+                Button {
+                    selectedRoute = slice.route
+                } label: {
+                    HStack(spacing: 8) {
+                        Circle()
+                            .fill(slice.color)
+                            .frame(width: 10, height: 10)
+                        Text(slice.name)
+                            .font(.subheadline)
+                            .lineLimit(1)
+                        Spacer()
+                        Text(Money.euros(slice.totalMinor))
+                            .font(.subheadline)
+                            .monospacedDigit()
+                        Text(shareText(of: slice, totalMinor: totalMinor))
+                            .font(.caption)
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                            .frame(width: 44, alignment: .trailing)
+                        Image(systemName: "chevron.right")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
             }
         }
     }
@@ -92,36 +126,50 @@ struct CategoryDonutChart: View {
         let name: String
         let color: Color
         let totalMinor: Int
+        let category: Category?
+
+        var route: CategoryRoute {
+            category.map { .category($0) } ?? .uncategorized
+        }
     }
 
     private func makeSlices() -> [Slice] {
-        var totals: [UUID?: Int] = [:]
-        var categoriesByUUID: [UUID: Category] = [:]
-
-        for transaction in transactions where transaction.kind == .expense {
-            let items = transaction.lineItems ?? []
-            if items.isEmpty {
-                totals[transaction.category?.uuid, default: 0] += transaction.amountMinor
-                if let category = transaction.category { categoriesByUUID[category.uuid] = category }
-            } else {
-                for item in items {
-                    totals[item.category?.uuid, default: 0] += item.lineTotalMinor
-                    if let category = item.category { categoriesByUUID[category.uuid] = category }
-                }
-            }
-        }
-
+        let totals = SpendingReport.expenseTotals(transactions)
+        let byUUID = Dictionary(uniqueKeysWithValues: categories.map { ($0.uuid, $0) })
         return totals
             .compactMap { key, total -> Slice? in
                 // A discount-heavy category can net <= 0; SectorMark can't render it.
                 guard total > 0 else { return nil }
-                if let key, let category = categoriesByUUID[key] {
+                if let key, let category = byUUID[key] {
                     return Slice(id: key.uuidString, name: category.name,
-                                 color: Color(hex: category.colorHex), totalMinor: total)
+                                 color: Color(hex: category.colorHex), totalMinor: total, category: category)
                 }
                 return Slice(id: "uncategorized", name: "Uncategorized",
-                             color: Color(.systemGray), totalMinor: total)
+                             color: Color(.systemGray), totalMinor: total, category: nil)
             }
             .sorted { $0.totalMinor > $1.totalMinor }
+    }
+
+    /// Map a chart angle selection (a cumulative value along the angular axis) back to the slice
+    /// it falls in — walking the slices in plot order, the same order the chart draws them.
+    private func slice(at value: Int, in slices: [Slice]) -> Slice? {
+        var cumulative = 0
+        for slice in slices {
+            cumulative += slice.totalMinor
+            if value < cumulative { return slice }
+        }
+        return slices.last
+    }
+}
+
+/// A drill-down target: a concrete category, or the Uncategorized pool. `Hashable` so it can
+/// drive `navigationDestination(item:)` (Category is a `PersistentModel`, hence Hashable).
+enum CategoryRoute: Hashable {
+    case category(Category)
+    case uncategorized
+
+    var categoryValue: Category? {
+        if case .category(let category) = self { return category }
+        return nil
     }
 }
