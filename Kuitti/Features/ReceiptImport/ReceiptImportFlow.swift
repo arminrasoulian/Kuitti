@@ -31,6 +31,17 @@ final class ReceiptImportFlow {
         pages = images.compactMap(ImageProcessor.processReceiptPage)
     }
 
+    /// Start the flow from images already in hand (shared in, or picked from the library),
+    /// skipping the camera and going straight to parsing.
+    func beginImport(images: [UIImage], modelContext: ModelContext) async {
+        setCaptured(images: images)
+        guard !pages.isEmpty else {
+            step = .failed(message: "Couldn't read that receipt. Try a clearer image.", retryable: false)
+            return
+        }
+        await parse(modelContext: modelContext)
+    }
+
     func parse(modelContext: ModelContext) async {
         guard !pages.isEmpty else { return }
         step = .parsing

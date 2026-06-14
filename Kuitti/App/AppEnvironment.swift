@@ -9,4 +9,6 @@ final class AppEnvironment {
     let appLock = AppLockController()
     /// Proactive duplicate-product suggestions (badge/banner/Settings/post-scan nudge).
     let duplicates = DuplicateScanner()
+    /// Entry point for receipts shared in from other apps / the library (see RootTabView).
+    let receiptImport = ReceiptImportCoordinator()
 }

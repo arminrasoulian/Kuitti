@@ -1,8 +1,11 @@
+import PhotosUI
 import SwiftData
 import SwiftUI
+import UniformTypeIdentifiers
 
-/// Center tab root: entry points for the three capture flows. Only receipt scanning is
-/// gated on the Gemini key — barcode lookup and manual entry work without it.
+/// Center tab root: receipt-input methods grouped together ("Add a receipt") and the other
+/// actions below ("More"), so each entry point is self-explanatory. Receipt inputs are gated
+/// on the Gemini key; barcode lookup and manual entry work without it.
 struct ScanHubView: View {
     @Environment(AppEnvironment.self) private var env
     @State private var hasAPIKey = KeychainStore.hasAPIKey
@@ -12,50 +15,66 @@ struct ScanHubView: View {
     @State private var showingManualEntry = false
     @State private var nudge: ProductSimilarity.Candidate?
 
+    // "Choose from Library" source selection.
+    @State private var showingLibrarySource = false
+    @State private var showingPhotosPicker = false
+    @State private var showingFileImporter = false
+    @State private var pickedItems: [PhotosPickerItem] = []
+    @State private var loadingLibrary = false
+
     var body: some View {
-        VStack(spacing: 0) {
+        List {
             if !hasAPIKey {
-                setupBanner
-                    .padding(.top, 8)
+                Section {
+                    setupBanner
+                        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                        .listRowBackground(Color.clear)
+                }
             }
-            Spacer()
-            VStack(spacing: 12) {
-                Button {
+            Section("Add a receipt") {
+                actionRow(title: "Scan Receipt", subtitle: "Use the camera",
+                          systemImage: "doc.viewfinder", tint: .accentColor, enabled: hasAPIKey) {
                     showingReceiptScan = true
-                } label: {
-                    Label("Scan Receipt", systemImage: "doc.viewfinder")
-                        .font(.title3.weight(.semibold))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
                 }
-                .buttonStyle(.borderedProminent)
-                .disabled(!hasAPIKey)
-
-                Button {
+                actionRow(title: "Choose from Library", subtitle: "Import a photo or PDF",
+                          systemImage: "photo.on.rectangle", tint: .accentColor, enabled: hasAPIKey) {
+                    showingLibrarySource = true
+                }
+            }
+            Section("More") {
+                actionRow(title: "Scan Barcode", subtitle: "Check a product's price history",
+                          systemImage: "barcode.viewfinder", tint: .primary) {
                     showingBarcodeScan = true
-                } label: {
-                    Label("Scan Barcode", systemImage: "barcode.viewfinder")
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
                 }
-                .buttonStyle(.bordered)
-
-                Button("Add manually") {
+                actionRow(title: "Add Manually", subtitle: "Enter a transaction by hand",
+                          systemImage: "square.and.pencil", tint: .primary) {
                     showingManualEntry = true
                 }
-                .padding(.top, 4)
             }
-            Spacer()
-            Text("Scanning needs a connection; everything else works offline.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.bottom, 8)
+            Section {
+                if loadingLibrary {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                        Text("Loading…").foregroundStyle(.secondary)
+                    }
+                }
+            } footer: {
+                Text("Scanning needs a connection; everything else works offline.")
+            }
         }
-        .padding(.horizontal, 24)
         .navigationTitle("Scan")
         // The key may have been added (or removed) via Settings while this tab was inactive.
         .onAppear { hasAPIKey = KeychainStore.hasAPIKey }
+        .confirmationDialog("Import receipt from", isPresented: $showingLibrarySource, titleVisibility: .visible) {
+            Button("Photos") { showingPhotosPicker = true }
+            Button("Files") { showingFileImporter = true }
+            Button("Cancel", role: .cancel) {}
+        }
+        .photosPicker(isPresented: $showingPhotosPicker, selection: $pickedItems, maxSelectionCount: 5, matching: .images)
+        .fileImporter(isPresented: $showingFileImporter, allowedContentTypes: [.image, .pdf], allowsMultipleSelection: true) { result in
+            handleFiles(result)
+        }
+        .onChange(of: pickedItems) { _, items in loadPhotos(items) }
         .sheet(isPresented: $showingKeyEntry, onDismiss: { hasAPIKey = KeychainStore.hasAPIKey }) {
             APIKeyEntryView()
         }
@@ -78,6 +97,65 @@ struct ScanHubView: View {
         .sheet(item: $nudge) { candidate in
             PostScanNudgeView(candidate: candidate)
         }
+    }
+
+    private func actionRow(title: LocalizedStringKey, subtitle: LocalizedStringKey,
+                           systemImage: String, tint: Color, enabled: Bool = true,
+                           action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 14) {
+                Image(systemName: systemImage)
+                    .font(.title2)
+                    .foregroundStyle(tint)
+                    .frame(width: 32)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(.body.weight(.semibold)).foregroundStyle(.primary)
+                    Text(subtitle).font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.vertical, 4)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+        .opacity(enabled ? 1 : 0.5)
+    }
+
+    /// Photos → images → the shared import coordinator (no confirm; the user chose them).
+    private func loadPhotos(_ items: [PhotosPickerItem]) {
+        guard !items.isEmpty else { return }
+        loadingLibrary = true
+        Task {
+            var images: [UIImage] = []
+            for item in items {
+                if let data = try? await item.loadTransferable(type: Data.self),
+                   let image = UIImage(data: data) {
+                    images.append(image)
+                }
+            }
+            loadingLibrary = false
+            pickedItems = []
+            env.receiptImport.request(images: images, needsConfirmation: false)
+        }
+    }
+
+    /// Files (images or PDFs) → page images → the shared import coordinator. fileImporter
+    /// hands back security-scoped URLs, so access must be opened around the read.
+    private func handleFiles(_ result: Result<[URL], Error>) {
+        guard case .success(let urls) = result, !urls.isEmpty else { return }
+        loadingLibrary = true
+        var images: [UIImage] = []
+        for url in urls {
+            let scoped = url.startAccessingSecurityScopedResource()
+            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+            images.append(contentsOf: ReceiptFileLoader.images(from: url))
+        }
+        loadingLibrary = false
+        env.receiptImport.request(images: images, needsConfirmation: false)
     }
 
     private var setupBanner: some View {

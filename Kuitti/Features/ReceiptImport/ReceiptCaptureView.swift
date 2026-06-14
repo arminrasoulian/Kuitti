@@ -2,8 +2,11 @@ import PhotosUI
 import SwiftUI
 import UIKit
 
-/// Document camera with a photo-library fallback (the camera is unavailable on the
-/// simulator and older iPads). Both paths feed the same setCaptured → parse pipeline.
+/// The camera step of the scan flow. When the document camera is available it fills the
+/// screen with no overlaid controls (overlaying SwiftUI on VisionKit's own chrome collided
+/// with its shutter/filter row) — the "Choose from Library" entry now lives on the Scan hub.
+/// The photo picker only appears in the camera-unavailable fallback (simulator / old iPad),
+/// where there's no camera to overlap.
 struct ReceiptCaptureView: View {
     let flow: ReceiptImportFlow
 
@@ -14,7 +17,7 @@ struct ReceiptCaptureView: View {
     @State private var loadingPicked = false
 
     var body: some View {
-        ZStack(alignment: .bottom) {
+        Group {
             if DocumentCameraView.isSupported {
                 DocumentCameraView(
                     onScan: { images in capture(images) },
@@ -26,26 +29,18 @@ struct ReceiptCaptureView: View {
                     Label("Camera Unavailable", systemImage: "camera.fill")
                 } description: {
                     Text("Pick receipt photos from your library instead.")
+                } actions: {
+                    PhotosPicker(selection: $pickedItems, maxSelectionCount: 5, matching: .images) {
+                        if loadingPicked {
+                            ProgressView()
+                        } else {
+                            Text("Choose from Library")
+                        }
+                    }
+                    .disabled(loadingPicked)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-
-            PhotosPicker(selection: $pickedItems, maxSelectionCount: 5, matching: .images) {
-                Group {
-                    if loadingPicked {
-                        ProgressView()
-                    } else {
-                        Label("Choose from library", systemImage: "photo.on.rectangle")
-                            .font(.callout.weight(.medium))
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
-                .background(.ultraThinMaterial, in: Capsule())
-            }
-            .disabled(loadingPicked)
-            // Sits above the document camera's own shutter controls.
-            .padding(.bottom, DocumentCameraView.isSupported ? 96 : 24)
         }
         .onChange(of: pickedItems) { _, items in
             guard !items.isEmpty else { return }

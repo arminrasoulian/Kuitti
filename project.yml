@@ -31,6 +31,15 @@ targets:
         ITSAppUsesNonExemptEncryption: false
         NSCameraUsageDescription: "Kuitti uses the camera to photograph receipts and scan product barcodes."
         NSFaceIDUsageDescription: "Kuitti uses Face ID to unlock the app when App Lock is enabled."
+        # Accept receipt images/PDFs shared from other apps ("Copy to Kuitti") and opened
+        # from Files. Copied into the app Inbox (not in-place) and handled via .onOpenURL.
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Receipt
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - public.image
+              - com.adobe.pdf
+        LSSupportsOpeningDocumentsInPlace: false
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.personal.kuitti

@@ -4,6 +4,9 @@ import UIKit
 /// Hosts the scan → parse → review → save flow inside its own NavigationStack.
 /// The flow object is created lazily in .task because @Environment isn't available in init.
 struct ReceiptImportNavigator: View {
+    /// When set, the flow starts from these images (shared in / picked) and skips the camera.
+    var initialImages: [UIImage]? = nil
+
     @Environment(AppEnvironment.self) private var env
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
@@ -40,7 +43,11 @@ struct ReceiptImportNavigator: View {
         }
         .task {
             if flow == nil {
-                flow = ReceiptImportFlow(gemini: env.gemini)
+                let flow = ReceiptImportFlow(gemini: env.gemini)
+                self.flow = flow
+                if let initialImages {
+                    await flow.beginImport(images: initialImages, modelContext: modelContext)
+                }
             }
         }
     }
