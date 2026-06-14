@@ -40,6 +40,16 @@ targets:
               - public.image
               - com.adobe.pdf
         LSSupportsOpeningDocumentsInPlace: false
+        # The backup file type. Declared (not in CFBundleDocumentTypes) so the in-app
+        # restore file picker and ShareLink recognize "*.kuittibackup".
+        UTExportedTypeDeclarations:
+          - UTTypeIdentifier: com.personal.kuitti.backup
+            UTTypeDescription: Kuitti Backup
+            UTTypeConformsTo:
+              - public.data
+            UTTypeTagSpecification:
+              public.filename-extension:
+                - kuittibackup
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.personal.kuitti

@@ -29,6 +29,7 @@ struct SettingsView: View {
 
             Section("Data") {
                 NavigationLink("Export CSV") { ExportView() }
+                NavigationLink("Backup & Restore") { BackupView() }
             }
 
             Section("Appearance") {

@@ -60,3 +60,10 @@ nonisolated enum TextNormalizer {
         return collapsed
     }
 }
+
+/// Human-readable file sizes ("2.5 MB") for the backup list.
+nonisolated enum FileSize {
+    static func string(_ bytes: Int) -> String {
+        ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
+    }
+}
