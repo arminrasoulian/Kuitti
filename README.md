@@ -77,6 +77,11 @@
 - Optional **App Lock** with Face ID.
 - **Appearance**: system / light / dark.
 
+### 🎨 Icon & launch experience
+- **App icon**: a white receipt on a spruce-green gradient with an upward price-history trend line that breaks past the top into an arrow — the app's story in one mark. Single 1024 App Store icon (Xcode renders all device sizes).
+- **Animated launch**: the static launch screen (spruce field + receipt) hands off seamlessly to `SplashView`, which *draws the trend line onto the receipt*, pops the data dots and arrow, and fades up the wordmark before cross-fading into the app. Honors **Reduce Motion**.
+- Icon/launch art is **reproducible** from `Design/` (`icon.py` → SVG, `render.py` → PNG). See [`Design/README.md`](Design/README.md).
+
 ---
 
 ## Architecture & tech

@@ -3,6 +3,10 @@ import SwiftData
 import UIKit
 
 struct RootTabView: View {
+    /// Onboarding is suppressed until the launch splash has finished, so a new
+    /// user's onboarding sheet never presents underneath the splash.
+    var splashFinished: Bool = true
+
     @Environment(AppEnvironment.self) private var env
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.modelContext) private var modelContext
@@ -13,6 +17,7 @@ struct RootTabView: View {
     @State private var confirmingImport: ImageBatch?   // shown for the external (share) path
     @State private var runningImport: ImageBatch?      // hosts the import flow
     @State private var confirmedBatch: ImageBatch?     // staged across the confirm-sheet dismiss
+    @State private var showOnboarding = false          // released once the splash finishes
 
     private struct ImageBatch: Identifiable {
         let id = UUID()
@@ -39,8 +44,8 @@ struct RootTabView: View {
                 AppLockGateView()
             }
         }
-        .fullScreenCover(isPresented: needsOnboarding) {
-            OnboardingView { hasOnboarded = true }
+        .fullScreenCover(isPresented: $showOnboarding) {
+            OnboardingView { hasOnboarded = true; showOnboarding = false }
         }
         // A receipt image/PDF "Copy to Kuitti"'d or opened from Files. (When a top-row Share
         // Extension is added later, it would drain its App-Group inbox here too — see
@@ -74,9 +79,15 @@ struct RootTabView: View {
             ReceiptImportNavigator(initialImages: batch.images)
         }
         .task {
-            env.appLock.lockIfEnabled()
+            // Hold onboarding and the App Lock prompt until the splash has
+            // played, so neither pops over the launch animation. (The splash
+            // covers content meanwhile, so nothing leaks.)
+            if splashFinished { releaseAfterSplash() }
             materializeRecurring()
             env.duplicates.refresh(context: modelContext)
+        }
+        .onChange(of: splashFinished) { _, finished in
+            if finished { releaseAfterSplash() }
         }
         .onChange(of: scenePhase) { _, phase in
             switch phase {
@@ -91,8 +102,11 @@ struct RootTabView: View {
         }
     }
 
-    private var needsOnboarding: Binding<Bool> {
-        Binding(get: { !hasOnboarded }, set: { if !$0 { hasOnboarded = true } })
+    /// Once the launch splash has played, present onboarding (new users) and/or
+    /// engage App Lock. Driven by real `@State` so the cover presents reliably.
+    private func releaseAfterSplash() {
+        if !hasOnboarded { showOnboarding = true }
+        env.appLock.lockIfEnabled()
     }
 
     private var preferredScheme: ColorScheme? {
