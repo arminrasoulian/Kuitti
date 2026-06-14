@@ -25,5 +25,19 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild \
 - `JSONValue` (the Gemini schema builder) is `ExpressibleByStringLiteral` but **not** string-interpolation — wrap interpolated schema descriptions in `.string("…\(x)…")`.
 - App language is English via `AppLanguage.current`; UI strings flow through `Localizable.xcstrings`. Product names keep an original + translated form.
 
+## Branch & worktree discipline (mandatory for all agents)
+
+**Before applying any code changes, always work on a dedicated branch in its own git worktree.**
+
+1. **Create a branch** with a meaningful name that describes the work (e.g. `feature/receipt-export`, `fix/balance-rounding`, `refactor/transaction-editor-cleanup`).
+2. **Create a worktree** for that branch so parallel agents never share the same working tree:
+   ```bash
+   git worktree add ../Kuitti-<branch-short-name> -b <branch-name>
+   ```
+3. **Apply all changes inside that worktree directory**, not in the main checkout.
+4. If a branch/worktree for the requested work already exists, use it — do not create a duplicate.
+
+This ensures concurrent agents cannot overwrite each other's in-progress changes.
+
 ## After feature work
 Update `README.md` (above), add/adjust unit tests in `KuittiTests`, and run the test command. The architecture plan lives in the owner's planning notes (`pfm-ios-app-distributed-mitten.md`).

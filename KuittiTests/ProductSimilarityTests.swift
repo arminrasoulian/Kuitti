@@ -63,6 +63,14 @@ struct ProductSimilarityTests {
         #expect(ProductSimilarity.compare(fp("Maitorahka"), fp("Maitorahkaa"))?.confidence == .medium)
     }
 
+    @Test func sizeSignatureParsesOFFQuantityFormats() {
+        // The Open Food Facts `quantity` string feeds the barcode flow's size-mismatch flag.
+        #expect(ProductSimilarity.sizeSignature("2 x 0,5 l") == ["2x", "0.5l"])
+        #expect(ProductSimilarity.sizeSignature("500 g") == ["500g"])
+        #expect(ProductSimilarity.sizeSignature("33 cl") == ["33cl"])
+        #expect(ProductSimilarity.sizeSignature("Bottle, no size").isEmpty)
+    }
+
     @Test func catalogScanFindsCrossLanguagePairAndHonorsDismissals() {
         let a = fp("Banaani", unit: .kilogram, translated: "Banana", lang: "fi")
         let b = fp("Banana", unit: .kilogram, lang: "en")

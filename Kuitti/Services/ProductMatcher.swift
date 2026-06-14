@@ -180,21 +180,44 @@ struct ProductMatcher {
         return store
     }
 
-    /// Barcode flow: candidate local products for an Open Food Facts name/brand —
-    /// receipt-born products have no EAN, so the first scan needs a fuzzy bridge.
-    func candidates(forOFFName name: String, brand: String?) -> [(product: Product, score: Double)] {
+    /// A local product that might be the same thing as a scanned barcode's Open Food Facts
+    /// record. `sizeMismatch` is true only when BOTH the OFF size and the product name carry a
+    /// size signature and they differ (e.g. a single bottle vs a 2-pack) — surfaced so the
+    /// user can tell them apart before linking, never used to hide a candidate.
+    struct OFFCandidate {
+        let product: Product
+        let score: Double
+        let sizeMismatch: Bool
+    }
+
+    /// Barcode flow: candidate local products for an Open Food Facts name/brand/size —
+    /// receipt-born products have no EAN, so the first scan needs a fuzzy bridge. Size-aware:
+    /// candidates whose printed size matches the scanned one sort first; mismatches are flagged
+    /// (so a 0.5 L bottle isn't silently linked to a 2×0.5 L pack) but never dropped — the user
+    /// inspects and decides. The 0.62 floor trims the worst fuzzy noise while keeping recall
+    /// (cross-language / abbreviated receipt names need the headroom).
+    func candidates(forOFFName name: String, brand: String?, offSize: String?) -> [OFFCandidate] {
         let products = (try? context.fetch(FetchDescriptor<Product>())) ?? []
         let nameKey = TextNormalizer.key(name)
         let combinedKey = TextNormalizer.key([brand, name].compactMap(\.self).joined(separator: " "))
+        let offSig = offSize.map(ProductSimilarity.sizeSignature) ?? []
         return products
-            .map { product in
-                (product, max(FuzzyMatch.score(nameKey, product.normalizedKey),
-                              FuzzyMatch.score(combinedKey, product.normalizedKey)))
+            .map { product -> OFFCandidate in
+                let score = max(FuzzyMatch.score(nameKey, product.normalizedKey),
+                                FuzzyMatch.score(combinedKey, product.normalizedKey))
+                // Read sizes from the un-normalized names so decimals survive ("0,5 l").
+                let prodSig = ProductSimilarity.sizeSignature(product.canonicalName)
+                    .union(ProductSimilarity.sizeSignature(product.translatedName))
+                let sizeMismatch = !offSig.isEmpty && !prodSig.isEmpty && offSig != prodSig
+                return OFFCandidate(product: product, score: score, sizeMismatch: sizeMismatch)
             }
-            .filter { $0.1 >= 0.6 }
-            .sorted { $0.1 > $1.1 }
+            .filter { $0.score >= 0.62 }
+            .sorted { a, b in
+                if a.sizeMismatch != b.sizeMismatch { return !a.sizeMismatch }  // size-matches first
+                return a.score > b.score
+            }
             .prefix(5)
-            .map { ($0.0, $0.1) }
+            .map { $0 }
     }
 
     /// User-driven duplicate merge ("Banaani" vs "Banana"): possible precisely because

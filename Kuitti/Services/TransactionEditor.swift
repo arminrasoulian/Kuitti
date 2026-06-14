@@ -189,6 +189,57 @@ struct TransactionEditor {
         try save()
     }
 
+    // MARK: - Product edit / delete / barcode link
+
+    /// In-place edit of a product's identity/display fields — the AI parse is sometimes
+    /// slightly off, so the user can fix the name (size lives inside the name), translation,
+    /// brand, barcode, and unit. Trims inputs, recomputes the matching keys exactly where
+    /// ProductMatcher does, bumps updatedAt, saves. Does NOT recompute stats — no line items
+    /// change. `sourceLanguage` is left untouched (internal matching metadata, not editable).
+    func updateProduct(_ product: Product, canonicalName: String, translatedName: String,
+                       brand: String?, ean: String?, defaultUnit: UnitKind) throws {
+        let name = canonicalName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return }
+        product.canonicalName = name
+        product.normalizedKey = TextNormalizer.key(name)
+        // Clearing the translation must also clear its key, or a removed name keeps bridging
+        // fuzzy matches.
+        let translation = translatedName.trimmingCharacters(in: .whitespacesAndNewlines)
+        product.translatedName = translation
+        product.translatedNormalizedKey = TextNormalizer.key(translation)
+        product.brand = blankToNil(brand)
+        product.ean = blankToNil(ean)
+        product.defaultUnit = defaultUnit
+        product.updatedAt = Date()
+        try save()
+    }
+
+    /// Deletes a product that no transaction references. Returns false (a no-op) when any line
+    /// item still points at it — the `.nullify` rule would orphan those items, so referenced
+    /// products are protected. Aliases cascade; no stat recompute is needed. The caller
+    /// refreshes the duplicate scanner afterwards.
+    @discardableResult
+    func deleteProduct(_ product: Product) throws -> Bool {
+        guard (product.lineItems ?? []).isEmpty else { return false }
+        context.delete(product)
+        try save()
+        return true
+    }
+
+    /// Stamps a scanned barcode (and the brand, only when the product has none) onto an
+    /// existing product — the single barcode-link choke point, replacing the old direct save
+    /// in the barcode flow. No stat recompute (ean/brand aren't denormalized stats).
+    @discardableResult
+    func linkBarcode(_ ean: String, brand: String?, to product: Product) throws -> Product {
+        product.ean = ean
+        if product.brand == nil, let brand = blankToNil(brand) {
+            product.brand = brand
+        }
+        product.updatedAt = Date()
+        try save()
+        return product
+    }
+
     // MARK: - Denormalized product stats
 
     /// Full recompute per product on any save/edit/delete — cheap at this scale and
@@ -209,6 +260,13 @@ struct TransactionEditor {
     }
 
     // MARK: - Helpers
+
+    /// Trims a string; returns nil when it's empty — optional identity fields (brand, ean)
+    /// store nil rather than "" so they read as "unset".
+    private func blankToNil(_ s: String?) -> String? {
+        guard let t = s?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty else { return nil }
+        return t
+    }
 
     private func category(withUUID uuid: UUID?) -> Category? {
         guard let uuid else { return nil }

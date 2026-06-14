@@ -1,23 +1,41 @@
 import SwiftData
 import SwiftUI
 
+/// A barcode scanned but not yet linked, handed to `ProductDetailView` so the user can inspect
+/// a candidate product's full history before deciding to link the barcode to it (or go back and
+/// create a new product). While it's set, the edit/merge/delete menu is hidden — the only
+/// action offered is the link decision.
+struct PendingBarcodeLink: Hashable {
+    let ean: String
+    let brand: String?
+    let sizeMismatch: Bool
+    let offName: String?
+    let offSize: String?
+}
+
 /// The in-store "is this a good price?" screen: stats, price trend per chain, and the
 /// full purchase timeline for one product.
 struct ProductDetailView: View {
     let product: Product
+    /// When set, the screen is confirming whether to link a freshly scanned barcode to this
+    /// product (the inspect-before-link step). Default nil = ordinary product detail.
+    var pendingBarcode: PendingBarcodeLink? = nil
 
     @Environment(\.modelContext) private var context
+    @Environment(AppEnvironment.self) private var env
     @Environment(\.dismiss) private var dismiss
-    @State private var showRenameAlert = false
-    @State private var renameText = ""
+    @State private var showEditSheet = false
     @State private var showMergeSheet = false
-    // Set the instant a merge confirms so the body stops reading `product` (which may be the
-    // merged-away loser being deleted) for the frame before this view pops.
+    // Set the instant a merge/delete commits so the body stops reading `product` (which may be
+    // the merged-away loser or the just-deleted product) for the frame before this view pops.
     @State private var isMerging = false
+    @State private var isDeleting = false
+    @State private var deleteBlockedCount: Int?
+    @State private var showDeleteConfirm = false
     @State private var errorMessage: String?
 
     var body: some View {
-        if isMerging {
+        if isMerging || isDeleting {
             Color.clear
         } else {
             content
@@ -26,6 +44,9 @@ struct ProductDetailView: View {
 
     private var content: some View {
         List {
+            if let pendingBarcode {
+                linkSection(pendingBarcode)
+            }
             if product.brand != nil || product.ean != nil || product.nameDisplay.secondary != nil {
                 Section {
                     if let original = product.nameDisplay.secondary {
@@ -66,24 +87,27 @@ struct ProductDetailView: View {
         .navigationTitle(product.nameDisplay.primary)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Menu {
-                    Button("Rename…", systemImage: "pencil") {
-                        renameText = product.canonicalName
-                        showRenameAlert = true
+            if pendingBarcode == nil {
+                ToolbarItem(placement: .primaryAction) {
+                    Menu {
+                        Button("Edit…", systemImage: "pencil") {
+                            showEditSheet = true
+                        }
+                        Button("Merge into another product…", systemImage: "arrow.triangle.merge") {
+                            showMergeSheet = true
+                        }
+                        Divider()
+                        Button("Delete Product", systemImage: "trash", role: .destructive) {
+                            attemptDelete()
+                        }
+                    } label: {
+                        Label("More", systemImage: "ellipsis.circle")
                     }
-                    Button("Merge into another product…", systemImage: "arrow.triangle.merge") {
-                        showMergeSheet = true
-                    }
-                } label: {
-                    Label("More", systemImage: "ellipsis.circle")
                 }
             }
         }
-        .alert("Rename Product", isPresented: $showRenameAlert) {
-            TextField("Name", text: $renameText)
-            Button("Save") { rename() }
-            Button("Cancel", role: .cancel) {}
+        .sheet(isPresented: $showEditSheet) {
+            ProductEditView(product: product)
         }
         .sheet(isPresented: $showMergeSheet) {
             MergeTargetPicker(current: product) {
@@ -92,6 +116,18 @@ struct ProductDetailView: View {
                 isMerging = true
                 dismiss()
             }
+        }
+        .alert("Can't Delete Product", isPresented: deleteBlockedBinding) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            let count = deleteBlockedCount ?? 0
+            Text("\(count) purchase\(count == 1 ? "" : "s") reference this product. Remove or reassign those line items first.")
+        }
+        .confirmationDialog("Delete this product?", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
+            Button("Delete", role: .destructive) { performDelete() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes “\(product.nameDisplay.primary)” and its barcode and learned aliases. This can't be undone.")
         }
         .alert("Something Went Wrong", isPresented: errorAlertBinding) {
             Button("OK", role: .cancel) {}
@@ -104,17 +140,92 @@ struct ProductDetailView: View {
         (product.lineItems ?? []).sorted { $0.purchaseDate > $1.purchaseDate }
     }
 
-    private func rename() {
-        let trimmed = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, trimmed != product.canonicalName else { return }
-        product.canonicalName = trimmed
-        product.normalizedKey = TextNormalizer.key(trimmed)
-        product.updatedAt = Date()
+    // MARK: - Barcode link (inspect-before-link)
+
+    @ViewBuilder
+    private func linkSection(_ pending: PendingBarcodeLink) -> some View {
+        Section {
+            if product.ean == pending.ean {
+                Label("Barcode linked", systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+            } else {
+                if pending.sizeMismatch {
+                    Label(sizeWarning(pending), systemImage: "exclamationmark.triangle.fill")
+                        .font(.footnote)
+                        .foregroundStyle(.orange)
+                }
+                if let offName = pending.offName {
+                    LabeledContent("Scanned", value: offName)
+                }
+                LabeledContent("Barcode", value: pending.ean)
+                if let existing = product.ean {
+                    Text("This product already has barcode \(existing). Linking will replace it.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                Button {
+                    linkBarcode(pending)
+                } label: {
+                    Label(product.ean == nil ? "Link Barcode to This Product" : "Replace Barcode",
+                          systemImage: "barcode.viewfinder")
+                }
+            }
+        } header: {
+            Text("Scanned Barcode")
+        } footer: {
+            if product.ean != pending.ean {
+                Text("Check the purchase history below — make sure this is the same item (brand and size) you scanned.")
+            }
+        }
+    }
+
+    private func sizeWarning(_ pending: PendingBarcodeLink) -> String {
+        if let offSize = pending.offSize {
+            return "The scanned size (\(offSize)) looks different from this product's size. Check the history below before linking."
+        }
+        return "The scanned size looks different from this product's size. Check the history below before linking."
+    }
+
+    private func linkBarcode(_ pending: PendingBarcodeLink) {
         do {
-            try context.save()
+            try TransactionEditor(context: context).linkBarcode(pending.ean, brand: pending.brand, to: product)
+            env.duplicates.refresh(context: context)
         } catch {
             errorMessage = AppError(wrapping: error).userMessage
         }
+    }
+
+    // MARK: - Delete
+
+    private func attemptDelete() {
+        let count = (product.lineItems ?? []).count
+        if count > 0 {
+            deleteBlockedCount = count
+        } else {
+            showDeleteConfirm = true
+        }
+    }
+
+    private func performDelete() {
+        // Stop the body from dereferencing the product in the frame before this view pops.
+        isDeleting = true
+        do {
+            if try TransactionEditor(context: context).deleteProduct(product) {
+                env.duplicates.refresh(context: context)
+                dismiss()
+            } else {
+                // Became referenced between the check and now (shouldn't happen) — recover.
+                isDeleting = false
+                deleteBlockedCount = (product.lineItems ?? []).count
+            }
+        } catch {
+            isDeleting = false
+            errorMessage = AppError(wrapping: error).userMessage
+        }
+    }
+
+    private var deleteBlockedBinding: Binding<Bool> {
+        Binding(get: { deleteBlockedCount != nil }, set: { if !$0 { deleteBlockedCount = nil } })
     }
 
     private var errorAlertBinding: Binding<Bool> {
