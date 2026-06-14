@@ -15,11 +15,15 @@ struct BackupServiceTests {
         let snapOnboarded = defaults.bool(forKey: "hasOnboarded")
         let snapLock = AppLockController.isEnabled
         let snapTombstones = defaults.stringArray(forKey: "dismissedSeedIdentifiers")
+        let snapAIProvider = defaults.string(forKey: AISettings.providerKey)
+        let snapAIModel = defaults.string(forKey: AISettings.modelKey)
         defer {
             if let v = snapAppearance { defaults.set(v, forKey: "appearancePreference") } else { defaults.removeObject(forKey: "appearancePreference") }
             defaults.set(snapOnboarded, forKey: "hasOnboarded")
             AppLockController.isEnabled = snapLock
             if let v = snapTombstones { defaults.set(v, forKey: "dismissedSeedIdentifiers") } else { defaults.removeObject(forKey: "dismissedSeedIdentifiers") }
+            if let v = snapAIProvider { defaults.set(v, forKey: AISettings.providerKey) } else { defaults.removeObject(forKey: AISettings.providerKey) }
+            if let v = snapAIModel { defaults.set(v, forKey: AISettings.modelKey) } else { defaults.removeObject(forKey: AISettings.modelKey) }
         }
 
         // Build a representative graph in an empty source store.
@@ -52,6 +56,8 @@ struct BackupServiceTests {
         defaults.set(true, forKey: "hasOnboarded")
         AppLockController.isEnabled = true
         defaults.set(["seed.cat.x"], forKey: "dismissedSeedIdentifiers")
+        AISettings.provider = .google
+        AISettings.modelID = "gemini-2.5-pro-test"
 
         // Export → compressed file bytes → decode.
         let archive = try BackupService(context: source).export()
@@ -64,6 +70,7 @@ struct BackupServiceTests {
         try dest.save()
         defaults.set("light", forKey: "appearancePreference")   // changed; restore must overwrite
         AppLockController.isEnabled = false
+        AISettings.modelID = "changed-model"                    // changed; restore must overwrite
 
         try BackupService(context: dest).restore(decoded)
 
@@ -107,5 +114,24 @@ struct BackupServiceTests {
         #expect(defaults.string(forKey: "appearancePreference") == "dark")
         #expect(AppLockController.isEnabled == true)
         #expect(defaults.stringArray(forKey: "dismissedSeedIdentifiers") == ["seed.cat.x"])
+        #expect(defaults.string(forKey: AISettings.providerKey) == "google")
+        #expect(defaults.string(forKey: AISettings.modelKey) == "gemini-2.5-pro-test")
+    }
+
+    /// Archives written before the model picker have no aiProvider/aiModel — they must still
+    /// decode (the fields are optional), defending the no-formatVersion-bump choice.
+    @Test func preferencesDecodeWithoutAIFields() throws {
+        let json = """
+        {
+          "appearancePreference": "dark",
+          "hasOnboarded": true,
+          "appLockEnabled": false,
+          "dismissedSeedIdentifiers": ["seed.cat.x"]
+        }
+        """
+        let prefs = try JSONDecoder().decode(PreferencesDTO.self, from: Data(json.utf8))
+        #expect(prefs.aiProvider == nil)
+        #expect(prefs.aiModel == nil)
+        #expect(prefs.appearancePreference == "dark")
     }
 }

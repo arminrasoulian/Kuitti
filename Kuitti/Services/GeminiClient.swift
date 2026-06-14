@@ -1,11 +1,11 @@
 import Foundation
 
-/// Direct REST client for the Gemini API. The model ID is a single constant: receipt
-/// extraction is a low-creativity, high-volume vision task — exactly what 2.5 Flash is
-/// positioned for; swap to a newer Flash here if extraction quality ever disappoints.
+/// Direct REST client for the Gemini API. The model id is user-selectable — read from
+/// `AISettings.modelID` at request time (like the API key), falling back to the provider's
+/// default. `listModels` fetches the live catalog so new Google models appear without a code
+/// change. Receipt extraction is a low-creativity, high-volume vision task that 2.5 Flash
+/// (the default) is positioned for.
 actor GeminiClient {
-    static let modelID = "gemini-2.5-flash"
-
     nonisolated struct ReceiptPromptContext: Sendable {
         var knownProducts: [String] = []
         var knownAliases: [KnownAlias] = []
@@ -51,22 +51,50 @@ actor GeminiClient {
         )
     }
 
-    /// Cheap probe used by the Settings "Test key" button.
+    /// Used by the Settings/onboarding "Test key" button. A successful ListModels both proves
+    /// the key is valid and yields the catalog (the caller adopts the result), so key-checking
+    /// and catalog-loading share one network path.
     func validate(key: String) async -> Bool {
-        let body = GeminiRequest(
-            contents: [.init(parts: [.text("ping")])],
-            generationConfig: .init(
-                temperature: 0,
-                maxOutputTokens: 10,
-                thinkingConfig: .init(thinkingBudget: 0),
-                responseMimeType: "text/plain",
-                responseJsonSchema: nil
-            )
-        )
-        guard let request = try? makeURLRequest(body: body, apiKey: key) else { return false }
-        guard let (_, response) = try? await session.data(for: request),
-              let http = response as? HTTPURLResponse else { return false }
-        return http.statusCode == 200
+        (try? await listModels(key: key)) != nil
+    }
+
+    /// Live catalog of Google models usable for receipt parsing — those whose
+    /// `supportedGenerationMethods` includes `generateContent` (skips embedding / image / video
+    /// / TTS models that can't read a receipt). Takes an explicit key so the "Test key" path can
+    /// use it before saving; pages over `nextPageToken`. Reuses `sendWithRetry`, inheriting the
+    /// 401/403→invalidAPIKey, 429→rateLimited, 5xx→server mapping.
+    func listModels(key: String) async throws -> [AIModel] {
+        var collected: [GeminiModelListResponse.Model] = []
+        var pageToken: String?
+        repeat {
+            let data = try await sendWithRetry(makeListModelsRequest(key: key, pageToken: pageToken))
+            let page: GeminiModelListResponse
+            do {
+                page = try JSONDecoder().decode(GeminiModelListResponse.self, from: data)
+            } catch {
+                throw GeminiError.responseSchemaMismatch(description: "models list decode: \(error)")
+            }
+            collected.append(contentsOf: page.models ?? [])
+            pageToken = (page.nextPageToken?.isEmpty == false) ? page.nextPageToken : nil
+        } while pageToken != nil
+        return Self.mapModels(collected)
+    }
+
+    /// Pure transform (filter to generateContent-capable, strip the "models/" prefix, fall back
+    /// displayName→id), split out so it's unit-testable without networking.
+    nonisolated static func mapModels(_ models: [GeminiModelListResponse.Model]) -> [AIModel] {
+        models
+            .filter { $0.supportedGenerationMethods?.contains("generateContent") == true }
+            .map { m in
+                let id = m.name.hasPrefix("models/") ? String(m.name.dropFirst("models/".count)) : m.name
+                return AIModel(
+                    id: id,
+                    displayName: m.displayName ?? id,
+                    description: m.description,
+                    inputTokenLimit: m.inputTokenLimit,
+                    outputTokenLimit: m.outputTokenLimit
+                )
+            }
     }
 
     // MARK: - Core
@@ -89,7 +117,7 @@ actor GeminiClient {
                 responseJsonSchema: schema
             )
         )
-        let urlRequest = try makeURLRequest(body: body, apiKey: apiKey)
+        let urlRequest = try makeURLRequest(model: AISettings.modelID, body: body, apiKey: apiKey)
 
         // Decode failures and truncation get exactly one fresh attempt (the model is
         // non-deterministic); transport-level retries live in sendWithRetry.
@@ -128,13 +156,24 @@ actor GeminiClient {
         }
     }
 
-    private func makeURLRequest(body: GeminiRequest, apiKey: String) throws -> URLRequest {
-        let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(Self.modelID):generateContent")!
+    private func makeURLRequest(model: String, body: GeminiRequest, apiKey: String) throws -> URLRequest {
+        let url = URL(string: "\(AIProvider.google.baseURL)/models/\(model):generateContent")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
+        request.setValue(apiKey, forHTTPHeaderField: AIProvider.google.keyHeader)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(body)
+        return request
+    }
+
+    private func makeListModelsRequest(key: String, pageToken: String?) -> URLRequest {
+        var components = URLComponents(string: "\(AIProvider.google.baseURL)/models")!
+        var items = [URLQueryItem(name: "pageSize", value: "1000")]
+        if let pageToken { items.append(URLQueryItem(name: "pageToken", value: pageToken)) }
+        components.queryItems = items
+        var request = URLRequest(url: components.url!)
+        request.httpMethod = "GET"
+        request.setValue(key, forHTTPHeaderField: AIProvider.google.keyHeader)
         return request
     }
 

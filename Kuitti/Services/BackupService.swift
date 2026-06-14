@@ -29,7 +29,11 @@ struct BackupService {
                 appearancePreference: UserDefaults.standard.string(forKey: Self.appearanceKey) ?? "system",
                 hasOnboarded: UserDefaults.standard.bool(forKey: Self.onboardedKey),
                 appLockEnabled: AppLockController.isEnabled,
-                dismissedSeedIdentifiers: UserDefaults.standard.stringArray(forKey: Self.tombstoneKey) ?? []
+                dismissedSeedIdentifiers: UserDefaults.standard.stringArray(forKey: Self.tombstoneKey) ?? [],
+                aiProvider: AISettings.provider.rawValue,
+                // Export the raw stored value (not the computed fallback), so a never-chosen
+                // model restores as unset → default rather than a frozen "gemini-2.5-flash".
+                aiModel: UserDefaults.standard.string(forKey: AISettings.modelKey) ?? ""
             ),
             accounts: try fetch(Account.self).map(Self.dto(from:)),
             categories: try fetch(Category.self).map(Self.dto(from:)),
@@ -229,6 +233,8 @@ struct BackupService {
         UserDefaults.standard.set(archive.preferences.hasOnboarded, forKey: Self.onboardedKey)
         AppLockController.isEnabled = archive.preferences.appLockEnabled
         UserDefaults.standard.set(archive.preferences.dismissedSeedIdentifiers, forKey: Self.tombstoneKey)
+        UserDefaults.standard.set(archive.preferences.aiProvider ?? AIProvider.google.rawValue, forKey: AISettings.providerKey)
+        UserDefaults.standard.set(archive.preferences.aiModel ?? "", forKey: AISettings.modelKey)
 
         try context.save()
     }

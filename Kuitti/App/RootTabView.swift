@@ -85,6 +85,7 @@ struct RootTabView: View {
             if splashFinished { releaseAfterSplash() }
             materializeRecurring()
             env.duplicates.refresh(context: modelContext)
+            env.modelCatalog.refresh()
         }
         .onChange(of: splashFinished) { _, finished in
             if finished { releaseAfterSplash() }
@@ -96,6 +97,7 @@ struct RootTabView: View {
             case .active:
                 materializeRecurring()
                 env.duplicates.refresh(context: modelContext)
+                env.modelCatalog.refresh()
             default:
                 break
             }

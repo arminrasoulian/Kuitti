@@ -5,7 +5,7 @@
 > *Kuitti* is Finnish for "receipt." Finnish receipts are the most common case, but Kuitti reads receipts in any European language and shows product names translated into the app's language.
 
 - **Platform:** iOS 17+, SwiftUI, SwiftData, Swift Charts. **Zero third-party packages.**
-- **AI:** Google **Gemini 2.5 Flash** for receipt parsing and product identification, using *your own* API key (stored only in the iOS Keychain).
+- **AI:** Google **Gemini** for receipt parsing and product identification, using *your own* API key (stored only in the iOS Keychain). The model is **selectable in Settings** (provider · model · key) and the model list is fetched live from Google, so new Gemini models appear automatically; the default is **Gemini 2.5 Flash**.
 - **Privacy:** offline-first. The only network calls are the receipt/product parse to Gemini and barcode lookups to Open Food Facts. Money never leaves the device.
 
 ---
@@ -73,7 +73,7 @@
 - **Native iOS backup** works automatically: the data store lives in a backed-up location, so the app is included in iCloud/device backups (in-app archive copies are excluded to avoid doubling the backup size).
 
 ### 🔒 Privacy & security
-- The **Gemini API key** lives only in the Keychain (device-only; never in the repo, the binary, or backups) and is entered in Settings.
+- The **AI provider, model, and API key** are configured in **Settings → AI Model** (and during onboarding). The key lives only in the Keychain (device-only; never in the repo, the binary, or backups); the chosen provider/model are backed up, the key is not. The model list is loaded live from the provider whenever the app opens (cached for instant/offline display).
 - Optional **App Lock** with Face ID.
 - **Appearance**: system / light / dark.
 
@@ -135,7 +135,7 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild \
 
 ### Configuration
 1. Get a Google **Gemini API key**.
-2. Run the app → **Settings → Gemini API key** → paste it. It's stored only in the Keychain. Receipt scanning is enabled once a key is set; barcode lookup and manual entry work without one.
+2. Run the app → **Settings → AI Model** (or the onboarding screen) → paste the key and **Test** it. The available Gemini models load from Google; pick one (defaults to Gemini 2.5 Flash). The key is stored only in the Keychain. Receipt scanning is enabled once a key is set; barcode lookup and manual entry work without one.
 
 ---
 

@@ -14,7 +14,7 @@ struct SettingsView: View {
                 NavigationLink {
                     APIKeyEntryView()
                 } label: {
-                    LabeledContent("Gemini API key", value: hasAPIKey ? "Key saved •••" : "Not set")
+                    LabeledContent("AI Model", value: hasAPIKey ? AISettings.modelID : "Not set")
                 }
             }
 
@@ -46,7 +46,7 @@ struct SettingsView: View {
 
             Section("About") {
                 LabeledContent("Version", value: appVersion)
-                Text("Receipts are parsed with Google Gemini using your own API key.")
+                Text("Receipts are parsed with your chosen AI model using your own API key.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }

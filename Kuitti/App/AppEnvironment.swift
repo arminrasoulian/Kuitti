@@ -11,4 +11,10 @@ final class AppEnvironment {
     let duplicates = DuplicateScanner()
     /// Entry point for receipts shared in from other apps / the library (see RootTabView).
     let receiptImport = ReceiptImportCoordinator()
+    /// Live AI model catalog backing the Settings/onboarding model picker; refreshed on app open.
+    let modelCatalog: ModelCatalog
+
+    init() {
+        modelCatalog = ModelCatalog(client: gemini)
+    }
 }

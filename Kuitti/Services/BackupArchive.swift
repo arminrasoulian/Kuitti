@@ -27,11 +27,15 @@ nonisolated struct BackupArchive: Codable {
 }
 
 /// Backed-up app preferences (all non-secret). The API key in the Keychain is deliberately omitted.
+/// `aiProvider`/`aiModel` are optional so archives written before the model picker still decode
+/// (additive change — no formatVersion bump).
 nonisolated struct PreferencesDTO: Codable {
     var appearancePreference: String
     var hasOnboarded: Bool
     var appLockEnabled: Bool
     var dismissedSeedIdentifiers: [String]
+    var aiProvider: String?
+    var aiModel: String?
 }
 
 nonisolated struct AccountDTO: Codable {
