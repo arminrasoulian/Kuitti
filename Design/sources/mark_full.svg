@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="664" height="664" viewBox="180 180 664 664">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#23AD82"/>
+      <stop offset="0.55" stop-color="#15805F"/>
+      <stop offset="1" stop-color="#0B5440"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.34" r="0.72">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="paper" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#EAF3EF"/>
+    </linearGradient>
+  </defs>
+  <path d="M 322,288 Q 322,246 364,246 L 660,246 Q 702,246 702,288 L 702,760 L 683,786 L 664,760 L 645,786 L 626,760 L 607,786 L 588,760 L 569,786 L 550,760 L 531,786 L 512,760 L 493,786 L 474,760 L 455,786 L 436,760 L 417,786 L 398,760 L 379,786 L 360,760 L 341,786 L 322,760 L 322,288 Z" fill="url(#paper)"/>
+  <g>
+    <rect x="386" y="300" width="170" height="30" rx="15" fill="#157F5F" opacity="0.9"/>
+    <rect x="386" y="356" width="232" height="15" rx="7.5" fill="#D5E3DC"/>
+    <rect x="386" y="392" width="150" height="15" rx="7.5" fill="#D5E3DC"/>
+  </g>
+  <g>
+    <!-- white halo so the line reads on paper AND on the green bg -->
+    <polyline points="372,686 452,612 536,648 628,470 700,388 756,319" fill="none" stroke="#FFFFFF" stroke-width="50"
+              stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M 814,248 L 798,353 L 714,285 Z" fill="#FFFFFF" stroke="#FFFFFF" stroke-width="30" stroke-linejoin="round"/>
+    <!-- the trend itself -->
+    <polyline points="372,686 452,612 536,648 628,470 700,388 756,319" fill="none" stroke="#157F5F" stroke-width="28"
+              stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M 814,248 L 798,353 L 714,285 Z" fill="#1FB488" stroke="#1FB488" stroke-width="2" stroke-linejoin="round"/>
+    <!-- data dots -->
+    <circle cx="452" cy="612" r="21" fill="#FFFFFF"/>
+    <circle cx="452" cy="612" r="11" fill="#157F5F"/>
+    <circle cx="700" cy="388" r="23" fill="#FFFFFF"/>
+    <circle cx="700" cy="388" r="12" fill="#1FB488"/>
+  </g>
+</svg>

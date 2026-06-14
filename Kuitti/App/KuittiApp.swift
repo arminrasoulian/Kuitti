@@ -25,7 +25,7 @@ struct KuittiApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootTabView()
+            RootView()
                 .environment(environment)
         }
         .modelContainer(container)

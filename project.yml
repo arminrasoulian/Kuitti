@@ -25,7 +25,13 @@ targets:
     info:
       path: Kuitti/Support/Info.plist
       properties:
-        UILaunchScreen: {}
+        # Static launch screen: spruce field + the Kuitti receipt mark, centered.
+        # SplashView then matches this exact frame and animates the trend on top,
+        # so the hand-off from launch image to animated splash is seamless.
+        UILaunchScreen:
+          UIColorName: LaunchBG
+          UIImageName: LaunchLogo
+          UIImageRespectsSafeAreaInsets: false
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         ITSAppUsesNonExemptEncryption: false
