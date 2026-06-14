@@ -1,13 +1,16 @@
+import SwiftData
 import SwiftUI
 
 /// Center tab root: entry points for the three capture flows. Only receipt scanning is
 /// gated on the Gemini key — barcode lookup and manual entry work without it.
 struct ScanHubView: View {
+    @Environment(AppEnvironment.self) private var env
     @State private var hasAPIKey = KeychainStore.hasAPIKey
     @State private var showingKeyEntry = false
     @State private var showingReceiptScan = false
     @State private var showingBarcodeScan = false
     @State private var showingManualEntry = false
+    @State private var nudge: ProductSimilarity.Candidate?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -65,6 +68,16 @@ struct ScanHubView: View {
         .sheet(isPresented: $showingManualEntry) {
             TransactionEditView(existing: nil)
         }
+        // A receipt save sets pendingNudge once the off-main scan finishes (by which point
+        // the capture flow has closed) — surface it as a gentle merge prompt.
+        .onChange(of: env.duplicates.pendingNudge?.id) { _, id in
+            guard id != nil else { return }
+            nudge = env.duplicates.pendingNudge
+            env.duplicates.pendingNudge = nil
+        }
+        .sheet(item: $nudge) { candidate in
+            PostScanNudgeView(candidate: candidate)
+        }
     }
 
     private var setupBanner: some View {
@@ -92,5 +105,71 @@ struct ScanHubView: View {
             .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// Shown right after a receipt save when the new product looks like one you already have.
+/// Offers an immediate merge (with preview), keep-separate, or dismiss.
+private struct PostScanNudgeView: View {
+    let candidate: ProductSimilarity.Candidate
+
+    @Environment(\.modelContext) private var context
+    @Environment(AppEnvironment.self) private var env
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            if let a = product(candidate.a), let b = product(candidate.b) {
+                content(a: a, b: b)
+            } else {
+                // A product vanished (e.g. already merged) — nothing to offer.
+                Color.clear.task { dismiss() }
+            }
+        }
+        .presentationDetents([.medium])
+    }
+
+    private func content(a: Product, b: Product) -> some View {
+        VStack(spacing: 16) {
+            Image(systemName: "doc.on.doc.fill")
+                .font(.largeTitle)
+                .foregroundStyle(Color.accentColor)
+            Text("This looks like a product you already have")
+                .font(.headline)
+                .multilineTextAlignment(.center)
+            VStack(spacing: 2) {
+                Text(a.nameDisplay.primary).font(.body.weight(.semibold))
+                Text("and").font(.caption).foregroundStyle(.secondary)
+                Text(b.nameDisplay.primary).font(.body.weight(.semibold))
+            }
+            Text(candidate.reason)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer()
+            VStack(spacing: 12) {
+                NavigationLink {
+                    MergePreviewView(productA: a, productB: b) { dismiss() }
+                } label: {
+                    Text("Merge…").frame(maxWidth: .infinity).padding(.vertical, 6)
+                }
+                .buttonStyle(.borderedProminent)
+                Button("Keep separate") {
+                    context.insert(DismissedDuplicatePair(productA: a.uuid, productB: b.uuid))
+                    try? context.save()
+                    env.duplicates.refresh(context: context)
+                    dismiss()
+                }
+                .buttonStyle(.bordered)
+                Button("Not now") { dismiss() }
+            }
+        }
+        .padding()
+        .navigationTitle("Possible Duplicate")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func product(_ id: UUID) -> Product? {
+        let fetch = FetchDescriptor<Product>(predicate: #Predicate { $0.uuid == id })
+        return (try? context.fetch(fetch))?.first
     }
 }

@@ -176,6 +176,19 @@ struct TransactionEditor {
         try save()
     }
 
+    // MARK: - Product merge
+
+    /// The single entry point for merging two products (duplicate cleanup). Consolidates the
+    /// loser's purchase history and aliases under the survivor, preserves identity fields,
+    /// recomputes the survivor's denormalized stats, and saves. UI never calls
+    /// ProductMatcher.merge directly, so stats can't be left stale.
+    func mergeProducts(loser: Product, into survivor: Product) throws {
+        guard loser.persistentModelID != survivor.persistentModelID else { return }
+        ProductMatcher(context: context).merge(loser: loser, into: survivor)
+        recomputeStats(for: survivor)
+        try save()
+    }
+
     // MARK: - Denormalized product stats
 
     /// Full recompute per product on any save/edit/delete — cheap at this scale and

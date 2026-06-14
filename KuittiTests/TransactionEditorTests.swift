@@ -122,6 +122,36 @@ struct TransactionEditorTests {
         #expect(product?.sourceLanguage == "de")
     }
 
+    @Test func mergeProductsConsolidatesHistoryAndRecomputesStats() throws {
+        let context = try makeContext()
+        let editor = TransactionEditor(context: context)
+        let matcher = ProductMatcher(context: context)
+        let survivor = matcher.findOrCreateProduct(canonicalName: "Banaani", defaultUnit: .kilogram)
+        let loser = matcher.findOrCreateProduct(canonicalName: "Banana", defaultUnit: .kilogram)
+
+        let t1 = try editor.createManual(kind: .expense, date: Date(), amountMinor: 120,
+                                         payee: "Lidl", account: nil, category: nil, notes: "", paymentMethod: .card)
+        let l1 = LineItem(rawName: "BANAANI", displayName: "Banaani", quantity: 1, unit: .kilogram, lineTotalMinor: 120)
+        l1.transaction = t1; l1.product = survivor; context.insert(l1)
+        try editor.didEdit(t1)
+
+        let t2 = try editor.createManual(kind: .expense, date: Date(), amountMinor: 130,
+                                         payee: "Prisma", account: nil, category: nil, notes: "", paymentMethod: .card)
+        let l2 = LineItem(rawName: "BANANA", displayName: "Banana", quantity: 1, unit: .kilogram, lineTotalMinor: 130)
+        l2.transaction = t2; l2.product = loser; context.insert(l2)
+        try editor.didEdit(t2)
+
+        #expect(survivor.purchaseCount == 1)
+        #expect(loser.purchaseCount == 1)
+
+        try editor.mergeProducts(loser: loser, into: survivor)
+
+        // Loser gone; its history is now under the survivor with recomputed stats.
+        #expect(try context.fetch(FetchDescriptor<Product>()).count == 1)
+        #expect(survivor.purchaseCount == 2)
+        #expect((survivor.lineItems ?? []).count == 2)
+    }
+
     @Test func deleteRecomputesProductStats() throws {
         let context = try makeContext()
         let editor = TransactionEditor(context: context)

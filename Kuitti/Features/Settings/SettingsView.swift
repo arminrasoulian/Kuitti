@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct SettingsView: View {
+    @Environment(AppEnvironment.self) private var env
     @AppStorage("appearancePreference") private var appearance = "system"
     @State private var hasAPIKey = KeychainStore.hasAPIKey
     // Local mirror of AppLockController.isEnabled — Toggle needs a Binding,
@@ -22,6 +23,8 @@ struct SettingsView: View {
                 NavigationLink("Categories") { CategoryListView() }
                 NavigationLink("Budgets") { BudgetSetupView() }
                 NavigationLink("Recurring") { RecurringListView() }
+                NavigationLink("Review Duplicates") { DuplicateReviewView() }
+                    .badge(env.duplicates.count)
             }
 
             Section("Data") {

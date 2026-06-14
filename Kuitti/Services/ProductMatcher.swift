@@ -198,12 +198,42 @@ struct ProductMatcher {
     }
 
     /// User-driven duplicate merge ("Banaani" vs "Banana"): possible precisely because
-    /// nothing is @Attribute(.unique).
+    /// nothing is @Attribute(.unique). Reassigns the loser's history and identity to the
+    /// survivor, then deletes the loser. Stats are recomputed by the caller via
+    /// TransactionEditor.mergeProducts (the app-facing choke point).
     func merge(loser: Product, into survivor: Product) {
+        guard loser.persistentModelID != survivor.persistentModelID else { return }
         for line in loser.lineItems ?? [] { line.product = survivor }
         for alias in loser.aliases ?? [] { alias.product = survivor }
         if survivor.ean == nil { survivor.ean = loser.ean }
         if survivor.brand == nil { survivor.brand = loser.brand }
+        // Keep the loser's app-language translation if the survivor has none, so a merge
+        // never silently loses the only translation.
+        if survivor.translatedName.isEmpty, !loser.translatedName.isEmpty {
+            survivor.translatedName = loser.translatedName
+            survivor.translatedNormalizedKey = loser.translatedNormalizedKey
+            if survivor.sourceLanguage.isEmpty { survivor.sourceLanguage = loser.sourceLanguage }
+        }
         context.delete(loser)
+        // Reassignment can leave two aliases with the same (store, normalizedRawName) on the
+        // survivor — collapse them so the logical (store, rawName) key stays unique.
+        dedupeAliases(of: survivor)
+    }
+
+    /// Collapse aliases on a product that share the logical key (store, normalizedRawName),
+    /// summing hit counts and preferring a user-confirmed source.
+    private func dedupeAliases(of product: Product) {
+        var keep: [String: ProductAlias] = [:]
+        for alias in product.aliases ?? [] {
+            let key = "\(alias.store?.uuid.uuidString ?? "-")|\(alias.normalizedRawName)"
+            if let existing = keep[key] {
+                existing.hitCount += alias.hitCount
+                if alias.source == .user { existing.sourceRaw = AliasSource.user.rawValue }
+                existing.lastUsedAt = max(existing.lastUsedAt, alias.lastUsedAt)
+                context.delete(alias)
+            } else {
+                keep[key] = alias
+            }
+        }
     }
 }

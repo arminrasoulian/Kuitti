@@ -18,6 +18,7 @@ nonisolated enum SchemaV1: VersionedSchema {
             Store.self,
             ReceiptImage.self,
             RecurringTemplate.self,
+            DismissedDuplicatePair.self,
         ]
     }
 }

@@ -124,6 +124,56 @@ struct ProductMatcherTests {
         #expect(aliases.allSatisfy { $0.product?.uuid == survivor.uuid })
     }
 
+    @Test func mergePreservesLoserTranslation() throws {
+        let context = try makeContext()
+        let matcher = ProductMatcher(context: context)
+        let survivor = matcher.findOrCreateProduct(canonicalName: "Banana", defaultUnit: .kilogram)
+        let loser = matcher.findOrCreateProduct(canonicalName: "Banaani", defaultUnit: .kilogram,
+                                                translatedName: "Banana", sourceLanguage: "fi")
+        try context.save()
+
+        matcher.merge(loser: loser, into: survivor)
+        try context.save()
+
+        // The survivor had no translation, so the loser's is kept (never silently lost).
+        #expect(survivor.translatedName == "Banana")
+        #expect(survivor.translatedNormalizedKey == "banana")
+    }
+
+    @Test func mergeDedupesCollidingAliases() throws {
+        let context = try makeContext()
+        let matcher = ProductMatcher(context: context)
+        let survivor = matcher.findOrCreateProduct(canonicalName: "Banaani", defaultUnit: .kilogram)
+        let loser = matcher.findOrCreateProduct(canonicalName: "Banana", defaultUnit: .kilogram)
+
+        // Two store-agnostic aliases for the same raw text, one on each product. Inserted
+        // directly (upsertAlias would itself dedupe) to create the post-merge collision.
+        let a1 = ProductAlias(rawName: "BANAANI", normalizedRawName: "banaani", source: .gemini)
+        a1.product = survivor; a1.hitCount = 2; context.insert(a1)
+        let a2 = ProductAlias(rawName: "BANAANI", normalizedRawName: "banaani", source: .user)
+        a2.product = loser; a2.hitCount = 3; context.insert(a2)
+        try context.save()
+
+        matcher.merge(loser: loser, into: survivor)
+        try context.save()
+
+        let aliases = try context.fetch(FetchDescriptor<ProductAlias>())
+        #expect(aliases.count == 1)                       // collapsed, not duplicated
+        #expect(aliases.first?.product?.uuid == survivor.uuid)
+        #expect(aliases.first?.hitCount == 5)             // hit counts summed
+        #expect(aliases.first?.source == .user)           // user source preferred
+    }
+
+    @Test func selfMergeIsNoOp() throws {
+        let context = try makeContext()
+        let matcher = ProductMatcher(context: context)
+        let product = matcher.findOrCreateProduct(canonicalName: "Banaani", defaultUnit: .kilogram)
+        try context.save()
+
+        matcher.merge(loser: product, into: product)
+        #expect(try context.fetch(FetchDescriptor<Product>()).count == 1)
+    }
+
     @Test func offCandidatesBridgeReceiptBornProducts() throws {
         let context = try makeContext()
         let matcher = ProductMatcher(context: context)

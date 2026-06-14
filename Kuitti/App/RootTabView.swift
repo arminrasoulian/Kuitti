@@ -18,6 +18,7 @@ struct RootTabView: View {
                 .tabItem { Label("Scan", systemImage: "doc.viewfinder.fill") }
             NavigationStack { ProductListView() }
                 .tabItem { Label("Products", systemImage: "basket.fill") }
+                .badge(env.duplicates.count)
             NavigationStack { SettingsView() }
                 .tabItem { Label("Settings", systemImage: "gearshape.fill") }
         }
@@ -33,6 +34,7 @@ struct RootTabView: View {
         .task {
             env.appLock.lockIfEnabled()
             materializeRecurring()
+            env.duplicates.refresh(context: modelContext)
         }
         .onChange(of: scenePhase) { _, phase in
             switch phase {
@@ -40,6 +42,7 @@ struct RootTabView: View {
                 env.appLock.lockIfEnabled()
             case .active:
                 materializeRecurring()
+                env.duplicates.refresh(context: modelContext)
             default:
                 break
             }

@@ -11,9 +11,20 @@ struct ProductDetailView: View {
     @State private var showRenameAlert = false
     @State private var renameText = ""
     @State private var showMergeSheet = false
+    // Set the instant a merge confirms so the body stops reading `product` (which may be the
+    // merged-away loser being deleted) for the frame before this view pops.
+    @State private var isMerging = false
     @State private var errorMessage: String?
 
     var body: some View {
+        if isMerging {
+            Color.clear
+        } else {
+            content
+        }
+    }
+
+    private var content: some View {
         List {
             if product.brand != nil || product.ean != nil || product.nameDisplay.secondary != nil {
                 Section {
@@ -75,8 +86,11 @@ struct ProductDetailView: View {
             Button("Cancel", role: .cancel) {}
         }
         .sheet(isPresented: $showMergeSheet) {
-            MergeTargetPicker(current: product) { survivor in
-                merge(into: survivor)
+            MergeTargetPicker(current: product) {
+                // Merge committed inside the picker's preview step — tear everything down.
+                showMergeSheet = false
+                isMerging = true
+                dismiss()
             }
         }
         .alert("Something Went Wrong", isPresented: errorAlertBinding) {
@@ -98,18 +112,6 @@ struct ProductDetailView: View {
         product.updatedAt = Date()
         do {
             try context.save()
-        } catch {
-            errorMessage = AppError(wrapping: error).userMessage
-        }
-    }
-
-    private func merge(into survivor: Product) {
-        ProductMatcher(context: context).merge(loser: product, into: survivor)
-        // merge repoints line items, so the survivor's denormalized stats are stale.
-        TransactionEditor(context: context).recomputeStats(for: survivor)
-        do {
-            try context.save()
-            dismiss()
         } catch {
             errorMessage = AppError(wrapping: error).userMessage
         }
@@ -177,7 +179,7 @@ private struct PurchaseRow: View {
 
 private struct MergeTargetPicker: View {
     let current: Product
-    let onPick: (Product) -> Void
+    let onMerged: () -> Void
 
     @Environment(\.dismiss) private var dismiss
     @Query private var products: [Product]
@@ -194,9 +196,11 @@ private struct MergeTargetPicker: View {
                     )
                 } else {
                     List(candidates) { candidate in
-                        Button {
-                            dismiss()
-                            onPick(candidate)
+                        NavigationLink {
+                            // current is the loser by default ("merge THIS into another");
+                            // the preview still lets the user flip which one survives.
+                            MergePreviewView(productA: current, productB: candidate,
+                                             defaultSurvivor: candidate, onMerged: onMerged)
                         } label: {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(candidate.nameDisplay.primary)

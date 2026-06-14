@@ -2,6 +2,7 @@ import SwiftData
 import SwiftUI
 
 struct ProductListView: View {
+    @Environment(AppEnvironment.self) private var env
     @Query private var products: [Product]
     @State private var searchText = ""
     @State private var showScanner = false
@@ -28,6 +29,11 @@ struct ProductListView: View {
         }
         .navigationTitle("Products")
         .searchable(text: $searchText, prompt: "Search products")
+        .safeAreaInset(edge: .top) {
+            if env.duplicates.count > 0 {
+                duplicatesBanner
+            }
+        }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {
@@ -40,6 +46,35 @@ struct ProductListView: View {
         .fullScreenCover(isPresented: $showScanner) {
             BarcodeScanScreen()
         }
+    }
+
+    private var duplicatesBanner: some View {
+        NavigationLink {
+            DuplicateReviewView()
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "doc.on.doc.fill")
+                    .font(.title3)
+                    .foregroundStyle(Color.accentColor)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(env.duplicates.count == 1 ? "1 possible duplicate" : "\(env.duplicates.count) possible duplicates")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                    Text("Review and merge similar products.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding()
+            .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal)
+        .padding(.top, 8)
     }
 
     // Sorted in memory: SQL ordering of optional dates can't guarantee nil-last, and the

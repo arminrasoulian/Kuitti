@@ -10,6 +10,7 @@ struct ReceiptReviewView: View {
 
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppEnvironment.self) private var env
 
     @Query(filter: #Predicate<Account> { !$0.isArchived }, sort: \Account.sortOrder)
     private var accounts: [Account]
@@ -202,7 +203,11 @@ struct ReceiptReviewView: View {
 
     private func save() {
         do {
-            try flow.save(account: selectedAccount, modelContext: modelContext)
+            let transaction = try flow.save(account: selectedAccount, modelContext: modelContext)
+            // Re-scan around the products this receipt touched so a near-duplicate can be
+            // offered immediately (the Scan hub presents the nudge once this flow closes).
+            let savedProductIDs = Set((transaction.lineItems ?? []).compactMap { $0.product?.uuid })
+            env.duplicates.refresh(context: modelContext, nudgeAround: savedProductIDs)
             dismiss()
         } catch {
             saveErrorMessage = AppError(wrapping: error).userMessage
