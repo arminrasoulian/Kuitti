@@ -1,11 +1,13 @@
 import SwiftUI
 import SwiftData
 
-/// Per-category budget bars for the selected month. Spending follows the same reporting
-/// rule as the donut: itemized transactions count per line item's category, un-itemized
-/// ones count whole against the transaction's category.
+/// Per-category budget bars for the selected period. Spending follows THE REPORTING RULE
+/// (`SpendingReport`). Budgets are monthly, so for multi-month periods the target is scaled by
+/// the number of months *elapsed* so far (a still-running year counts only Jan…current month).
+/// Each bar drills into `CategoryDetailView`.
 struct BudgetProgressSection: View {
     let monthTransactions: [Transaction]
+    let interval: DateInterval
 
     @Query(sort: \Category.sortOrder) private var categories: [Category]
 
@@ -16,41 +18,43 @@ struct BudgetProgressSection: View {
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         } else {
-            let spending = expenseTotalsByCategory()
+            let totals = SpendingReport.expenseTotals(monthTransactions)
+            let monthCount = SpendingReport.elapsedMonthCount(in: interval)
             VStack(spacing: 14) {
+                if monthCount > 1 {
+                    Text("Budgets scaled ×\(monthCount) for this period.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
                 ForEach(budgeted) { category in
-                    BudgetRow(category: category, spentMinor: spending[category.uuid] ?? 0)
-                }
-            }
-        }
-    }
-
-    private func expenseTotalsByCategory() -> [UUID: Int] {
-        var totals: [UUID: Int] = [:]
-        for transaction in monthTransactions where transaction.kind == .expense {
-            let items = transaction.lineItems ?? []
-            if items.isEmpty {
-                if let uuid = transaction.category?.uuid {
-                    totals[uuid, default: 0] += transaction.amountMinor
-                }
-            } else {
-                for item in items {
-                    if let uuid = item.category?.uuid {
-                        totals[uuid, default: 0] += item.lineTotalMinor
+                    NavigationLink {
+                        CategoryDetailView(
+                            category: category,
+                            fallbackTitle: category.name,
+                            interval: interval,
+                            transactions: monthTransactions
+                        )
+                    } label: {
+                        BudgetRow(
+                            category: category,
+                            spentMinor: max(totals[category.uuid] ?? 0, 0),
+                            budgetMinor: (category.monthlyBudgetMinor ?? 0) * monthCount
+                        )
                     }
+                    .buttonStyle(.plain)
                 }
             }
         }
-        return totals
     }
 }
 
 private struct BudgetRow: View {
     let category: Category
     let spentMinor: Int
+    let budgetMinor: Int
 
     var body: some View {
-        let budgetMinor = category.monthlyBudgetMinor ?? 0
         let isOver = budgetMinor > 0 && spentMinor > budgetMinor
         HStack(spacing: 12) {
             CategoryIcon(iconName: category.iconName, colorHex: category.colorHex)
@@ -68,6 +72,9 @@ private struct BudgetRow: View {
                 ProgressView(value: progressFraction(spent: spentMinor, budget: budgetMinor))
                     .tint(isOver ? Color.red : Color(hex: category.colorHex))
             }
+            Image(systemName: "chevron.right")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
         }
     }
 

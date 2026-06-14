@@ -47,10 +47,12 @@
 - **Edit / Manual add:** amount, account, category, date, payee, notes, payment method, and editable line items. Editing a saved line item can re-link it to the right product and learn the alias.
 
 ### 📊 Dashboard & insights
-- Month income / expense / net, a **category donut**, a 6-month **trend chart**, month-over-month delta, and **budget progress** — with a month picker.
+- Income / expense / net, a **category donut**, an income-vs-expense **trend chart**, period-over-period delta, and **budget progress** — scoped to a **month, a year, or a custom date range** (segmented picker + stepper / date pickers).
+- **Category trend over months**: in year / custom ranges, a dedicated card charts a single category's spend month by month (defaulting to the biggest spender).
+- **Drill down by category**: tap a slice or legend row in the donut, or any budget bar, to see every purchase in that category for the period (grouped by day) — then tap an item to open its full transaction.
 
 ### 🎯 Budgets
-- Optional monthly budget per category; the dashboard shows progress against the current calendar month.
+- Optional monthly budget per category; the dashboard shows progress for the selected period — budgets scale to the **months elapsed** so a running year/range stays a fair "on track?" signal.
 
 ### 🏦 Accounts
 - Multiple accounts (bank / cash / credit) with **computed balances** (initial balance + signed transaction sums), default account, reordering, archiving, and a per-account filtered transaction list.

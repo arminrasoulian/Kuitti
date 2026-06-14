@@ -23,23 +23,12 @@ struct BudgetSetupView: View {
         .navigationTitle("Budgets")
     }
 
-    /// Same reporting rule as the dashboard: itemized transactions count per line-item
-    /// category; itemless ones count transaction.category.
+    /// Spend for the current calendar month, via the shared reporting rule (`SpendingReport`).
     private func spentThisMonth(in category: Category) -> Int {
-        let calendar = Calendar.current
-        let now = Date()
-        var total = 0
-        for transaction in transactions where transaction.kind == .expense
-            && calendar.isDate(transaction.date, equalTo: now, toGranularity: .month) {
-            let items = transaction.lineItems ?? []
-            if items.isEmpty {
-                if transaction.category?.uuid == category.uuid { total += transaction.amountMinor }
-            } else {
-                total += items.filter { $0.category?.uuid == category.uuid }
-                    .reduce(0) { $0 + $1.lineTotalMinor }
-            }
-        }
-        return max(total, 0)
+        let interval = Calendar.current.dateInterval(of: .month, for: Date())
+            ?? DateInterval(start: Date(), duration: 0)
+        let inMonth = transactions.filter { interval.contains($0.date) }
+        return max(SpendingReport.expenseTotal(for: category.uuid, in: inMonth), 0)
     }
 }
 
